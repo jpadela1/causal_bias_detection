@@ -1,6 +1,6 @@
 # Causal-Discovery Audit for Algorithmic Bias
 
-Python/PyCharm reproduction of the paper *"From Correlation to Mechanism: A
+Python/PyCharm accompanies the paper *"From Correlation to Mechanism: A
 Causal-Discovery Protocol for Auditing Algorithmic Bias in High-Stakes
 Decision Systems."* Implements all six causal discovery algorithms, the
 synthetic loan-approval study, the sensitivity sweep, the COMPAS
@@ -121,7 +121,7 @@ estimators agree on these datasets to four decimal places because the
 underlying assumption (linear no-interaction outcome) is the same; OLS
 is just the closed-form estimator.
 
-## Notes on edge-encoding and SHD
+## Notes on edge-encoding and SHD - CHECK
 
 - `causal_discovery._extract_edges_from_graph` converts causal-learn's
   graph matrix to lists of directed / undirected / bidirected edges.
@@ -145,7 +145,3 @@ audits of algorithmic-score systems.
 
 - All RNG seeds are explicit. Synthetic-data seed defaults to 42 to
   match the paper.
-- LiNGAM coefficients should match the paper to within ≈0.03 on the
-  synthetic data (paper reports β̂ = -0.179 vs planted -0.15 at
-  n = 1000) and to four decimals on COMPAS (β̂ = +0.134) once the
-  ProPublica filters yield the same n ≈ 9,380.
