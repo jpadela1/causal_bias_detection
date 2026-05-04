@@ -3,11 +3,14 @@ visualization.py
 ================
 Plot the causal graphs produced by the discovery algorithms.
 
-- Directed edges  (i -> j)  : solid arrows
-- Undirected      (i -- j)  : grey dotted lines (no arrowhead)
-- Bidirected      (i <-> j) : red dashed double-arrows (latent confounder)
-- A specific "flagged" edge (e.g. Race -> Loan, Race -> Score) is highlighted
-  in red to draw the auditor's eye to the bias path.
+- Directed edges  (i -> j)  : black solid arrow
+- Undirected      (i -- j)  : grey dotted line (no arrowhead)
+- Bidirected     (i <-> j)  : purple solid double-arrow (latent confounder
+                              suspected, e.g. from FCI). Distinct from flagged.
+- Flagged edge              : red dashed thick arrow. Used to highlight a
+                              specific edge under audit (e.g. Race -> Loan).
+                              Always single-direction, never represents a
+                              latent confounder.
 
 Layout philosophy
 -----------------
@@ -49,17 +52,28 @@ from causal_discovery import DiscoveryResult
 NODE_SIZE_LARGE = 1700   # for plot_discovery_result (single big plot)
 NODE_SIZE_SMALL = 900    # for plot_grid (six panels)
 
+# --- Edge colors. Bidirected and flagged are deliberately DIFFERENT. ---
+COLOR_DIRECTED      = "#333333"   # near-black solid
+COLOR_UNDIRECTED    = "#888888"   # grey dotted
+COLOR_BIDIRECTED    = "#9B59B6"   # purple, standard latent-confounder color
+COLOR_FLAGGED       = "#D62728"   # red, for the audit's flagged edge
+
 
 def _node_radius_pt(node_size: float) -> float:
     """matplotlib scatter ``s`` is area in pt^2 -> radius in pt."""
     return math.sqrt(node_size / math.pi)
+
+
 # --- Color scheme (matches the paper's figures) ----------------------------
 NODE_ROLE_COLORS = {
-    "protected": "#8ab4d4",  # blue — Race, Sex/Gender 5B8FF9
-    "proxy": "#f0a868",  # orange — ZIP, Priors F6BD16
-    "mediator": "#90c88c",  # green — Income, CreditSc, Juv_Fel, Juv_Misd 5AD8A6
-    "outcome": "#e8a0a0",  # pink — LoanApprv, COMPAS_Score, Recidivism F08BB4
-    "covariate": "#c8c8c8",  # grey — Age, Charge, Education 9DA0A4
+    # Soft pastel palette matching the paper's reference figures.
+    # Roughly ColorBrewer "Pastel1" / Set1-with-alpha. Desaturated so multi-
+    # color graphs read cleanly and reproduce well in print.
+    "protected": "#A6CEE3",   # soft sky blue
+    "proxy":     "#FDB863",   # pale orange
+    "mediator":  "#A6DBA0",   # pastel green
+    "outcome":   "#FBB4AE",   # soft pink
+    "covariate": "#CCCCCC",   # light grey
 }
 
 # Human-readable role labels for the legend.
@@ -239,18 +253,22 @@ def _kamada_with_glue(g: nx.Graph) -> dict:
 
 
 def _layered_layout(g: nx.DiGraph) -> dict:
-    """Place nodes in horizontal layers by topological rank.
+    """Place nodes in vertical layers by topological rank, flowing
+    left-to-right.
 
-    Sources at the top (y high), sinks at the bottom. Nodes within the
-    same rank are spaced evenly along x. Reads naturally for causal DAGs
-    where you want to see information flow.
+    Sources sit on the left (x low), sinks on the right (x high). Nodes
+    within the same rank are spaced vertically. This matches the paper's
+    reference figures, where Race / Sex are on the left and Score /
+    Recidivism / Loan are pinned to the right.
+
+    The horizontal extent is wider than the vertical extent (roughly 1.4x)
+    because most causal pipelines have more rank levels than nodes per
+    rank, so the natural shape of the graph is a wide rectangle rather
+    than a square.
     """
-    # nx.topological_generations groups nodes whose ancestors are in
-    # earlier generations. Result: a list of lists (each sublist = one rank).
     try:
         generations = list(nx.topological_generations(g))
     except nx.NetworkXUnfeasible:
-        # Has a cycle; fall back to kamada.
         return nx.kamada_kawai_layout(g)
 
     if not generations:
@@ -259,18 +277,20 @@ def _layered_layout(g: nx.DiGraph) -> dict:
     n_layers = len(generations)
     pos = {}
     for layer_idx, nodes in enumerate(generations):
-        # y from +1 (top) down to -1 (bottom)
+        # x from -1.4 (sources, left) to +1.4 (sinks, right). The wider
+        # horizontal extent gives the figure breathing room when there
+        # are many layers, and it matches the paper's reference layout.
         if n_layers == 1:
-            y = 0.0
+            x = 0.0
         else:
-            y = 1.0 - 2.0 * layer_idx / (n_layers - 1)
-        # x evenly spaced in [-1, 1]
+            x = -1.4 + 2.8 * layer_idx / (n_layers - 1)
+        # y evenly spaced within each rank, centered on 0.
         k = len(nodes)
         for i, v in enumerate(sorted(nodes)):
             if k == 1:
-                x = 0.0
+                y = 0.0
             else:
-                x = -1.0 + 2.0 * i / (k - 1)
+                y = 1.0 - 2.0 * i / (k - 1)
             pos[v] = (x, y)
     return pos
 
@@ -363,15 +383,19 @@ def _draw_undirected_line(
 
 # --- Legend builders ------------------------------------------------------
 def _build_edge_legend_handles():
-    """Three line styles: directed, undirected, bidirected/flagged."""
+    """Four edge styles: directed, undirected, bidirected (latent confounder),
+    and flagged (the audit's highlighted edge under investigation)."""
     return [
-        Line2D([0], [0], color="#333333", lw=1.6, marker=">",
+        Line2D([0], [0], color=COLOR_DIRECTED, lw=1.6, marker=">",
                markersize=8, label="Directed (i \u2192 j)"),
-        Line2D([0], [0], color="#888888", lw=1.0, linestyle=":",
+        Line2D([0], [0], color=COLOR_UNDIRECTED, lw=1.0, linestyle=":",
                label="Undirected (i \u2014 j)"),
-        Line2D([0], [0], color="#D62728", lw=1.6, linestyle="--",
+        Line2D([0], [0], color=COLOR_BIDIRECTED, lw=1.8, linestyle="-",
                marker=">", markersize=8,
-               label="Bidirected / flagged"),
+               label="Bidirected (latent confounder)"),
+        Line2D([0], [0], color=COLOR_FLAGGED, lw=2.0, linestyle="--",
+               marker=">", markersize=8,
+               label="Flagged edge (under audit)"),
     ]
 
 
@@ -390,15 +414,71 @@ def save_figure_dual_format(fig, save_path: str, dpi: int = 300) -> None:
 
     ``save_path`` may include any extension (or none). We strip the
     extension and write both 'foo.png' and 'foo.pdf'.
+
+    If a file is locked (e.g. a PDF viewer on Windows holds the previous
+    output open), we automatically retry with a numeric suffix:
+    'foo_2.pdf', 'foo_3.pdf', etc., up to 50 attempts. The retry is
+    reported on stdout so the user knows the file landed under a new name.
     """
     base, _ = os.path.splitext(save_path)
     os.makedirs(os.path.dirname(base) or ".", exist_ok=True)
-    png_path = base + ".png"
-    pdf_path = base + ".pdf"
+
+    actual_base = _resolve_writable_basename(base)
+    png_path = actual_base + ".png"
+    pdf_path = actual_base + ".pdf"
     fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
     fig.savefig(pdf_path, bbox_inches="tight")
+    if actual_base != base:
+        print(f"  NOTE: original path was locked, used '{actual_base}' instead.")
+        print(f"        (close any PDF viewer holding {base}.pdf open to fix)")
     print(f"  saved: {png_path}")
     print(f"  saved: {pdf_path}")
+
+
+def _resolve_writable_basename(base: str, max_attempts: int = 50) -> str:
+    """Find a basename for which both .png and .pdf are writable.
+
+    Tries ``base`` first; if either ``base.png`` or ``base.pdf`` is locked
+    by another process (e.g. Adobe Reader, Edge PDF, Chrome PDF, an image
+    preview pane), tries ``base_2``, ``base_3``, ... up to ``max_attempts``.
+    Returns the first basename whose two files we successfully open with
+    write access.
+    """
+    candidates = [base] + [f"{base}_{i}" for i in range(2, max_attempts + 2)]
+    for candidate in candidates:
+        if _can_write_both(candidate + ".png", candidate + ".pdf"):
+            return candidate
+    # Could not resolve in 50 attempts -- fall back to the original and
+    # let savefig raise PermissionError with the real path in the message.
+    return base
+
+
+def _can_write_both(*paths: str) -> bool:
+    """Return True iff each path is openable for writing right now.
+
+    On Windows, a file held open exclusively by another process raises
+    ``PermissionError`` here, so we can detect the lock without actually
+    truncating any existing file we might want to keep.
+    """
+    handles = []
+    try:
+        for p in paths:
+            # mode 'a+b' opens for append+read in binary, creating if absent;
+            # this is enough to test write access without truncating.
+            handles.append(open(p, "a+b"))
+    except (PermissionError, OSError):
+        for h in handles:
+            try:
+                h.close()
+            except Exception:
+                pass
+        return False
+    for h in handles:
+        try:
+            h.close()
+        except Exception:
+            pass
+    return True
 
 
 # Backward-compat alias
@@ -430,7 +510,7 @@ def plot_discovery_result(
     coef_threshold: float = 0.05,
     layout: str = "auto",
     save_path: Optional[str] = None,
-    figsize: Tuple[int, int] = (11, 8),
+    figsize: Tuple[int, int] = (13, 7),
     show_legend: bool = True,
 ):
     """Render a discovery result as a labeled DAG with edge & node legend.
@@ -469,7 +549,7 @@ def plot_discovery_result(
         is_flagged = (s, d) in flagged
         _draw_directed_arrow(
             ax, pos[s], pos[d],
-            color="#D62728" if is_flagged else "#333333",
+            color=COLOR_FLAGGED if is_flagged else COLOR_DIRECTED,
             linewidth=2.6 if is_flagged else 1.6,
             arrowsize=26 if is_flagged else 20,
             style="dashed" if is_flagged else "solid",
@@ -479,18 +559,20 @@ def plot_discovery_result(
     for s, d in result.undirected_edges:
         _draw_undirected_line(
             ax, pos[s], pos[d],
-            color="#888888", linewidth=1.3, style="dotted",
+            color=COLOR_UNDIRECTED, linewidth=1.3, style="dotted",
             node_size=NODE_SIZE_LARGE,
         )
+    # Bidirected edges = latent confounder. PURPLE SOLID double-arrow,
+    # distinct from the red dashed flagged edges so the legend is honest.
     for s, d in result.bidirected_edges:
         _draw_directed_arrow(
-            ax, pos[s], pos[d], color="#D62728", linewidth=1.8,
-            arrowsize=16, style="dashed", rad=0.15,
+            ax, pos[s], pos[d], color=COLOR_BIDIRECTED, linewidth=2.0,
+            arrowsize=18, style="solid", rad=0.15,
             node_size=NODE_SIZE_LARGE,
         )
         _draw_directed_arrow(
-            ax, pos[d], pos[s], color="#D62728", linewidth=1.8,
-            arrowsize=16, style="dashed", rad=0.15,
+            ax, pos[d], pos[s], color=COLOR_BIDIRECTED, linewidth=2.0,
+            arrowsize=18, style="solid", rad=0.15,
             node_size=NODE_SIZE_LARGE,
         )
 
@@ -534,7 +616,7 @@ def plot_discovery_result(
     ax.set_title(title or result.algorithm, fontsize=13, fontweight="bold",
                  pad=14)
     ax.set_axis_off()
-    _set_axes_with_padding(ax, pos, pad_frac=0.18)
+    _set_axes_with_padding(ax, pos, pad_frac=0.30)
 
     # --- Legend (reserves bottom strip of figure) -------------------------
     if show_legend:
@@ -571,7 +653,7 @@ def plot_grid(
     title: str = "Discovered DAGs",
     save_path: Optional[str] = None,
     layout: str = "auto",
-    figsize_per_panel: Tuple[float, float] = (5.5, 5.0),
+    figsize_per_panel: Tuple[float, float] = (6.0, 4.5),
 ):
     """Plot all algorithm results in one figure (rows of 3) with a legend."""
     valid = [(k, v) for k, v in results.items() if v is not None]
@@ -616,7 +698,7 @@ def plot_grid(
             is_flagged = (s, d) in flagged
             _draw_directed_arrow(
                 ax, pos[s], pos[d],
-                color="#D62728" if is_flagged else "#333333",
+                color=COLOR_FLAGGED if is_flagged else COLOR_DIRECTED,
                 linewidth=2.2 if is_flagged else 1.1,
                 arrowsize=18 if is_flagged else 13,
                 style="dashed" if is_flagged else "solid",
@@ -627,18 +709,19 @@ def plot_grid(
         for s, d in res.undirected_edges:
             _draw_undirected_line(
                 ax, pos[s], pos[d],
-                color="#888", linewidth=0.9, style="dotted",
+                color=COLOR_UNDIRECTED, linewidth=0.9, style="dotted",
                 node_size=NODE_SIZE_SMALL, extra_margin_pt=2.0,
             )
+        # Bidirected = latent confounder. Purple solid, distinct from flagged.
         for s, d in res.bidirected_edges:
             _draw_directed_arrow(
-                ax, pos[s], pos[d], color="#D62728",
-                linewidth=1.3, arrowsize=11, style="dashed", rad=0.15,
+                ax, pos[s], pos[d], color=COLOR_BIDIRECTED,
+                linewidth=1.5, arrowsize=12, style="solid", rad=0.15,
                 node_size=NODE_SIZE_SMALL, extra_margin_pt=2.0,
             )
             _draw_directed_arrow(
-                ax, pos[d], pos[s], color="#D62728",
-                linewidth=1.3, arrowsize=11, style="dashed", rad=0.15,
+                ax, pos[d], pos[s], color=COLOR_BIDIRECTED,
+                linewidth=1.5, arrowsize=12, style="solid", rad=0.15,
                 node_size=NODE_SIZE_SMALL, extra_margin_pt=2.0,
             )
 
@@ -658,7 +741,7 @@ def plot_grid(
 
         ax.set_title(name, fontsize=11, fontweight="bold", pad=8)
         ax.set_axis_off()
-        _set_axes_with_padding(ax, pos, pad_frac=0.18)
+        _set_axes_with_padding(ax, pos, pad_frac=0.25)
 
     for ax in axes[n:]:
         ax.set_axis_off()
