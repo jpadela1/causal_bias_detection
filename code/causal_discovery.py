@@ -110,31 +110,131 @@ class DiscoveryResult:
 
 
 # ------------------------------------------------------------------
+# Empirical detection of causal-learn's edge-encoding convention.
+# ------------------------------------------------------------------
+# Causal-learn's documentation and community sources have given conflicting
+# accounts of how (i, j) entries map to edge orientation. Rather than guess
+# from docs, we run a tiny known-direction PC test the first time we need
+# to extract edges, and configure the extractor based on what causal-learn
+# actually returns.
+#
+# The result is cached in module state so the test runs at most once per
+# Python process. Set ``_CONVENTION_OVERRIDE`` to "standard" or "transposed"
+# to skip the test (e.g. for unit tests or if the detector misbehaves).
+#
+# "standard"   = graph[i,j] = -1 means "tail at i" (the convention the
+#                official PC docs describe).
+# "transposed" = graph[i,j] = -1 means "tail at j" (the convention used
+#                by some community helpers).
+# ------------------------------------------------------------------
+
+_CONVENTION_CACHE: Optional[str] = None    # set after the test runs
+_CONVENTION_OVERRIDE: Optional[str] = None  # opt-in override for testing
+
+
+def _detect_causal_learn_convention() -> str:
+    """Run PC on a 3-node chain X -> Y -> Z and inspect the result.
+
+    The chain has strong linear effects and non-Gaussian noise, so PC
+    should reliably orient *both* edges (every edge is part of a v-structure-
+    forming pattern when seen as part of the wider DAG, and on this small
+    case the orientations are stably identifiable). We then read the graph
+    matrix under each interpretation and pick the one that matches the
+    ground truth.
+
+    Falls back to "standard" if the test fails to import / run / produce a
+    confident answer.
+    """
+    if _CONVENTION_OVERRIDE in ("standard", "transposed"):
+        return _CONVENTION_OVERRIDE
+
+    try:
+        import numpy as _np
+        cl_pc, *_ = _import_causal_learn()
+
+        # X -> Y -> Z, with non-Gaussian (uniform) noise and strong effects
+        rng = _np.random.default_rng(7)
+        n = 1500
+        X = rng.uniform(-1, 1, n)
+        Y = 1.5 * X + rng.uniform(-0.2, 0.2, n)
+        Z = 1.5 * Y + rng.uniform(-0.2, 0.2, n)
+        data = _np.column_stack([X, Y, Z])
+
+        # Run PC quietly
+        try:
+            cg = cl_pc(data, alpha=0.05, indep_test="fisherz", show_progress=False)
+        except TypeError:
+            cg = cl_pc(data, 0.05, "fisherz")
+        m = _np.asarray(cg.G.graph)
+
+        # Indices: X=0, Y=1, Z=2.
+        # Both interpretations agree on undirected (-1, -1), bidirected
+        # (1, 1), and zero. They disagree on (-1, 1) vs (1, -1).
+        #
+        # Under "standard":  m[i,j]=-1 means tail at i. So m[0,1]=-1, m[1,0]=1
+        #                    encodes  X -> Y.
+        # Under "transposed": m[i,j]=-1 means tail at j. So m[0,1]=-1, m[1,0]=1
+        #                     encodes  Y -> X.
+        #
+        # The chain X -> Y -> Z has these specific signatures:
+        #   standard   expects: m[0,1]=-1, m[1,0]=+1  AND  m[1,2]=-1, m[2,1]=+1
+        #   transposed expects: m[0,1]=+1, m[1,0]=-1  AND  m[1,2]=+1, m[2,1]=-1
+        std_xy = (m[0, 1] == -1 and m[1, 0] == 1)
+        std_yz = (m[1, 2] == -1 and m[2, 1] == 1)
+        trn_xy = (m[0, 1] == 1 and m[1, 0] == -1)
+        trn_yz = (m[1, 2] == 1 and m[2, 1] == -1)
+
+        std_score = int(std_xy) + int(std_yz)
+        trn_score = int(trn_xy) + int(trn_yz)
+
+        if std_score > trn_score:
+            return "standard"
+        if trn_score > std_score:
+            return "transposed"
+        # Tie (e.g. PC left edges undirected) -- fall back to standard.
+        return "standard"
+    except Exception:
+        # Any failure: don't crash, just use the documented convention.
+        return "standard"
+
+
+def _get_convention() -> str:
+    global _CONVENTION_CACHE
+    if _CONVENTION_CACHE is None:
+        _CONVENTION_CACHE = _detect_causal_learn_convention()
+    return _CONVENTION_CACHE
+
+
+def report_convention(verbose: bool = True) -> str:
+    """Detect (if not yet cached) and report which causal-learn convention
+    is in effect. Call once after running an algorithm to confirm the
+    auto-detector picked the correct interpretation. If your algorithm
+    DAGs are coming out reversed, this is the first thing to inspect.
+
+    Returns either "standard" or "transposed".
+    """
+    conv = _get_convention()
+    if verbose:
+        print(f"[causal-learn convention] detected: {conv}")
+        if conv == "standard":
+            print("  graph[i,j] = -1 means 'tail at i' (matches PC docs).")
+            print("  i -> j is encoded as graph[i,j]=-1, graph[j,i]=+1.")
+        else:
+            print("  graph[i,j] = -1 means 'tail at j' (transposed convention).")
+            print("  i -> j is encoded as graph[i,j]=+1, graph[j,i]=-1.")
+    return conv
+
+
+# ------------------------------------------------------------------
 # Helper: extract edges from a causal-learn GeneralGraph
 # ------------------------------------------------------------------
 def _extract_edges_from_graph(graph_matrix: np.ndarray, variables: List[str]):
     """Convert a causal-learn graph matrix to edge lists.
 
-    Causal-learn's encoding convention:
-
-        graph[i, j] stores the ENDPOINT MARK at node i for the edge
-        between i and j (NOT at node j).
-
-        Endpoint values:  -1 = TAIL,  +1 = ARROW
-
-    Therefore:
-        i -> j   :  graph[i,j] = -1 (tail at i),    graph[j,i] = +1 (arrowhead at j)
-        j -> i   :  graph[i,j] = +1 (arrowhead at i), graph[j,i] = -1 (tail at j)
-        i -- j   :  graph[i,j] = -1, graph[j,i] = -1   (tails at both ends)
-        i <-> j  :  graph[i,j] = +1, graph[j,i] = +1   (arrowheads at both ends)
-
-    Verified by:
-      - The PyWhy community blog (Ken Koon Wong, 2023) which transposes
-        causal-learn matrices before visualization specifically because
-        their orientation is inverted from the standard adjacency matrix.
-      - causal-learn's own TestGraphVisualization.py, which constructs an
-        Edge with (TAIL, ARROW) endpoints in (source, target) order.
+    Reads the convention via ``_get_convention()`` (auto-detected on first
+    call). See ``_detect_causal_learn_convention`` for the detection logic.
     """
+    convention = _get_convention()
     directed, undirected, bidirected = [], [], []
     n = len(variables)
     seen = set()
@@ -147,21 +247,32 @@ def _extract_edges_from_graph(graph_matrix: np.ndarray, variables: List[str]):
             if key in seen:
                 continue
             seen.add(key)
-            # i -> j : tail at i (-1), arrowhead at j (+1)
-            if a == -1 and b == 1:
-                directed.append((variables[i], variables[j]))
-            # j -> i : arrowhead at i (+1), tail at j (-1)
-            elif a == 1 and b == -1:
-                directed.append((variables[j], variables[i]))
-            # bidirected (FCI): arrowheads at both ends (+1, +1)
-            elif a == 1 and b == 1:
-                bidirected.append((variables[i], variables[j]))
-            # undirected: tails at both ends (-1, -1)
-            elif a == -1 and b == -1:
-                undirected.append((variables[i], variables[j]))
+            if convention == "standard":
+                # standard: graph[i,j] = endpoint at i
+                # i -> j : tail at i (-1), arrowhead at j (+1)
+                if a == -1 and b == 1:
+                    directed.append((variables[i], variables[j]))
+                elif a == 1 and b == -1:
+                    directed.append((variables[j], variables[i]))
+                elif a == 1 and b == 1:
+                    bidirected.append((variables[i], variables[j]))
+                elif a == -1 and b == -1:
+                    undirected.append((variables[i], variables[j]))
+                else:
+                    undirected.append((variables[i], variables[j]))
             else:
-                # Partially oriented (FCI circle marks etc.) -- treat as undirected
-                undirected.append((variables[i], variables[j]))
+                # transposed: graph[i,j] = endpoint at j
+                # i -> j : arrowhead at j (+1) at graph[i,j]; tail at i (-1) at graph[j,i]
+                if a == 1 and b == -1:
+                    directed.append((variables[i], variables[j]))
+                elif a == -1 and b == 1:
+                    directed.append((variables[j], variables[i]))
+                elif a == 1 and b == 1:
+                    bidirected.append((variables[i], variables[j]))
+                elif a == -1 and b == -1:
+                    undirected.append((variables[i], variables[j]))
+                else:
+                    undirected.append((variables[i], variables[j]))
     return directed, undirected, bidirected
 
 

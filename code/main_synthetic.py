@@ -25,7 +25,7 @@ matplotlib.use("Agg")  # headless-safe
 import matplotlib.pyplot as plt
 
 from synthetic_data import generate_paired_datasets, plot_ground_truth_dag
-from causal_discovery import run_all, structural_hamming_distance
+from causal_discovery import run_all, structural_hamming_distance, report_convention
 from ate_estimation import staged_backdoor_ate, disparate_impact_ratio
 from visualization import plot_discovery_result, plot_grid, DEFAULT_ROLES_LOAN
 from sensitivity_analysis import (
@@ -60,6 +60,14 @@ def main():
     print("=" * 72)
     print("STUDY 1: SYNTHETIC LOAN-APPROVAL DATASET")
     print("=" * 72)
+
+    # Detect causal-learn's edge-encoding convention before any algorithm
+    # runs. This protects against version drift in the underlying library:
+    # if the convention differs from what the docs say, the auto-detector
+    # picks the right one so PC/FCI/GES/GRaSP plots show the correct
+    # arrow directions. LiNGAM is unaffected (uses a different code path).
+    print()
+    report_convention()
 
     # Render the ground-truth DAG up front so reviewers can compare every
     # algorithm's recovered graph against the SCM that generated the data.

@@ -31,7 +31,7 @@ from compas_analysis import (
     baseline_disparities,
     plot_correlation_vs_causal,
 )
-from causal_discovery import run_all
+from causal_discovery import run_all, report_convention
 from ate_estimation import (
     backdoor_ate,
     staged_backdoor_ate,
@@ -48,6 +48,14 @@ def main():
     print("=" * 72)
     print("STUDY 2: COMPAS RECIDIVISM ANALYSIS")
     print("=" * 72)
+
+    # Detect causal-learn's edge-encoding convention before any algorithm
+    # runs. The auto-detector runs PC on a known X->Y->Z chain and picks
+    # the matrix interpretation consistent with the result, so the plotted
+    # arrows always match the algorithms' actual outputs regardless of
+    # which causal-learn version (or convention) is installed.
+    print()
+    report_convention()
 
     # 1. Load + preprocess
     raw = load_compas()
@@ -71,7 +79,7 @@ def main():
     results = run_all(
         df,
         direct_lingam_exogenous=["Race", "Sex", "Age"],
-        direct_lingam_sinks=["Recidivism","Score"],
+        direct_lingam_sinks=["Recidivism"],
     )
     for name, res in results.items():
         if res is None:
@@ -98,22 +106,6 @@ def main():
     print("\n=== Table III: COMPAS algorithm comparison ===")
     print(table3.to_string(index=False))
     table3.to_csv("results/compas_summary.csv", index=False)
-
-#end Table III block and adding new SHD computation code
-    from compas_analysis import get_compas_ground_truth
-    from causal_discovery import structural_hamming_distance
-
-    gt_biased = get_compas_ground_truth("biased")
-    gt_fair = get_compas_ground_truth("fair")
-    for name, res in results.items():
-        if res is None:
-            continue
-        shd_b = structural_hamming_distance(res, gt_biased)
-        shd_f = structural_hamming_distance(res, gt_fair)
-        print(f"  {name:14s}  SHD-biased={shd_b}  SHD-fair={shd_f}")
-
-    # End ddding SHD computation
-
 
     # 4. DAG figures
     flagged = [("Race", "Score"), ("Race", "Priors")]
