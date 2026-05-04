@@ -166,7 +166,7 @@ GROUND_TRUTH_EDGES = [
     ("Income",    "CreditSc",  "0.30"),
     ("Income",    "Loan",      "0.40"),
     ("CreditSc",  "Loan",      "0.50"),
-    ("Race",      "Loan",      "beta"),     # planted direct bias (biased only)
+    ("Race",      "Loan",      "\u03b2=\u22120.15"),  # planted bias edge
 ]
 
 # Node roles: drives node colors. Same scheme used in visualization.py.
@@ -209,39 +209,35 @@ def plot_ground_truth_dag(
     from matplotlib.lines import Line2D
     from matplotlib.patches import FancyArrowPatch, Patch
 
-    # Layered top-down positions. Hand-placed so the SCM reads like a
-    # textbook causal graph: protected attributes & latent at top, mediators
-    # in the middle, outcome at bottom. CreditSc sits LEFT of the central
-    # column so the long Race -> Loan bias edge can sweep down the right
-    # side without overlapping any node.
+    # Layered LEFT-TO-RIGHT positions matching the paper's reference
+    # figures: protected attributes & latent on the left, mediators in
+    # the middle, the Loan outcome pinned on the right. The flagged
+    # Race -> Loan edge sweeps along the bottom margin without overlapping
+    # any other node.
     pos = {
-        # row 0 (top): exogenous protected attributes + latent confounder
-        "Race":      (-2.5,  3.0),
-        "Gender":    (-0.5,  3.0),
-        "SES":       ( 1.5,  3.0),
-        # row 1: ZIP (left, Race-driven) and Education (center-right)
-        "ZIP":       (-2.5,  1.2),
-        "Education": ( 0.7,  1.2),
-        # row 2: Income (mediator with many parents) -- centered so it sits
-        # between Education and where Race+ZIP feed in
-        "Income":    (-0.5, -0.5),
-        # row 3: CreditSc -- to the LEFT of center so the Race->Loan edge
-        # can pass cleanly along the right margin
-        "CreditSc":  (-1.6, -2.2),
-        # row 4 (bottom): outcome, slightly right so Race->Loan curves
-        # rather than going through Income/CreditSc
-        "Loan":      ( 0.4, -3.6),
+        # column 0 (left): exogenous protected attributes + latent confounder
+        "Race":      (-3.0,  1.8),
+        "Gender":    (-3.0,  0.0),
+        "SES":       (-3.0, -1.8),
+        # column 1: ZIP (Race-driven) and Education (Gender + SES driven)
+        "ZIP":       (-1.0,  1.8),
+        "Education": (-1.0, -0.5),
+        # column 2: Income (mediator with many parents)
+        "Income":    ( 1.0,  0.6),
+        # column 3: CreditSc
+        "CreditSc":  ( 3.0,  0.6),
+        # column 4 (right): Loan outcome, sink
+        "Loan":      ( 5.0,  0.6),
     }
 
     role_colors = {
         "latent":    "#FFFFFF",   # white fill, dashed border (drawn below)
-        "protected": "#8ab4d4",
-        "proxy":     "#f0a868",
-        "covariate": "#c8c8c8",
-        "mediator":  "#90c88c",
-        "outcome":   "#e8a0a0",
+        "protected": "#A6CEE3",   # soft sky blue
+        "proxy":     "#FDB863",   # pale orange
+        "covariate": "#CCCCCC",   # light grey
+        "mediator":  "#A6DBA0",   # pastel green
+        "outcome":   "#FBB4AE",   # soft pink
     }
-
     role_labels = {
         "latent":    "Latent confounder (unobserved)",
         "protected": "Protected attribute",
@@ -265,11 +261,12 @@ def plot_ground_truth_dag(
             )
             style = "dashed" if (is_planted_bias or is_latent_edge) else "solid"
             lw = 2.4 if is_planted_bias else (1.2 if is_latent_edge else 1.6)
-            # Curve the planted-bias edge strongly (rad=-0.45) so it sweeps
-            # along the LEFT margin past ZIP & CreditSc instead of cutting
-            # through Income. Negative rad = curve to the left of the line.
+            # Curve the planted-bias edge strongly so it sweeps along
+            # the BOTTOM of the layout past the lower nodes instead of
+            # cutting through the middle. Positive rad = curve below
+            # the line connecting source to target.
             if is_planted_bias:
-                rad = -0.55
+                rad = 0.45
             elif is_latent_edge:
                 rad = 0.05
             else:
@@ -286,23 +283,33 @@ def plot_ground_truth_dag(
             ax.add_patch(arrow)
 
             if show_coefficients:
-                # Hand-placed labels for edges where algorithmic placement
-                # collides with a node. Mapping: (src, dst) -> (x, y).
-                # All other edges use the algorithmic placement below.
                 MANUAL_LABEL_POS = {
-                    ("SES",       "Education"): ( 1.5,  2.1),
-                    ("SES",       "Income"):    ( 1.4,  0.8),
-                    ("Education", "Income"):    ( 0.5,  0.6),
-                    ("Education", "CreditSc"):  (-0.7,  0.0),
-                    ("ZIP",       "CreditSc"):  (-2.4,  0.0),
-                    ("Income",    "CreditSc"):  (-1.4, -1.4),
-                    ("Income",    "Loan"):      ( 0.6, -1.6),
-                    ("CreditSc",  "Loan"):      (-0.4, -3.0),
-                    ("Race",      "Loan"):      (-3.5,  0.0),  # curved bias
-                    ("Race",      "Income"):    (-1.4,  1.5),
-                    ("Race",      "ZIP"):       (-2.85,  2.1),
-                    ("Gender",    "Education"): (-0.1,  2.1),
-                    ("Gender",    "Income"):    (-0.95,  1.0),
+                    # SES (-3, -1.8) -> Education (-1, -0.5)
+                    ("SES",       "Education"): (-2.4, -1.3),
+                    # SES (-3, -1.8) -> Income (1, 0.6)
+                    ("SES",       "Income"):    ( 0.0, -1.4),
+                    # Gender (-3, 0) -> Education (-1, -0.5)
+                    ("Gender",    "Education"): (-2.4, -0.4),
+                    # Gender (-3, 0) -> Income (1, 0.6)
+                    ("Gender",    "Income"):    (-1.5,  0.6),
+                    # Race (-3, 1.8) -> ZIP (-1, 1.8)
+                    ("Race",      "ZIP"):       (-2.0,  2.1),
+                    # Race (-3, 1.8) -> Income (1, 0.6)
+                    ("Race",      "Income"):    (-0.7,  1.6),
+                    # Race -> Loan (curved bottom): apex around (1, -0.6)
+                    ("Race",      "Loan"):      ( 1.0, -1.1),
+                    # ZIP (-1, 1.8) -> CreditSc (3, 0.6)
+                    ("ZIP",       "CreditSc"):  ( 1.0,  1.5),
+                    # Education (-1, -0.5) -> Income (1, 0.6)
+                    ("Education", "Income"):    (-0.3,  0.4),
+                    # Education (-1, -0.5) -> CreditSc (3, 0.6)
+                    ("Education", "CreditSc"):  ( 1.5, -0.2),
+                    # Income (1, 0.6) -> CreditSc (3, 0.6)
+                    ("Income",    "CreditSc"):  ( 2.0,  0.95),
+                    # Income (1, 0.6) -> Loan (5, 0.6) -- top arc
+                    ("Income",    "Loan"):      ( 3.0,  1.05),
+                    # CreditSc (3, 0.6) -> Loan (5, 0.6)
+                    ("CreditSc",  "Loan"):      ( 4.0,  0.95),
                 }
                 if (src, dst) in MANUAL_LABEL_POS:
                     lab_x, lab_y = MANUAL_LABEL_POS[(src, dst)]
@@ -357,14 +364,14 @@ def plot_ground_truth_dag(
                         fontsize=9, fontweight="bold", zorder=5)
 
         ax.set_title(panel_title, fontsize=12, fontweight="bold", pad=10)
-        ax.set_xlim(-4.0, 2.5)
-        ax.set_ylim(-4.0, 3.5)
+        ax.set_xlim(-4.0, 6.0)
+        ax.set_ylim(-3.2, 2.8)
         ax.set_aspect("equal")
         ax.set_axis_off()
 
     # --- Figure assembly ----------------------------------------------------
     if show_both_versions:
-        fig, (ax_b, ax_u) = plt.subplots(1, 2, figsize=(14, 8))
+        fig, (ax_b, ax_u) = plt.subplots(1, 2, figsize=(18, 6.5))
         edges_biased = GROUND_TRUTH_EDGES
         edges_unbiased = [e for e in GROUND_TRUTH_EDGES
                           if not (e[0] == "Race" and e[1] == "Loan")]
@@ -373,7 +380,7 @@ def plot_ground_truth_dag(
         _draw_panel(ax_u, edges_unbiased,
                     "Unbiased SCM (Dataset B, β = 0.00)")
     else:
-        fig, ax = plt.subplots(figsize=(8, 9))
+        fig, ax = plt.subplots(figsize=(11, 6))
         _draw_panel(ax, GROUND_TRUTH_EDGES,
                     "Biased SCM (Dataset A, β = −0.15)")
 
@@ -393,8 +400,8 @@ def plot_ground_truth_dag(
                      "outcome", "latent"]
     ])
 
-    fig.subplots_adjust(top=0.90, bottom=0.20, left=0.03, right=0.97)
-    fig.suptitle(title, fontsize=14, fontweight="bold", y=0.96)
+    fig.subplots_adjust(top=0.86, bottom=0.16, left=0.03, right=0.97)
+    fig.suptitle(title, fontsize=14, fontweight="bold", y=0.95)
     fig.legend(handles=legend_handles, loc="lower center",
                ncol=3, frameon=True, fancybox=True, framealpha=0.95,
                edgecolor="#cccccc", fontsize=9,
