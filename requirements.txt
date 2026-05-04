@@ -1,0 +1,27 @@
+# --- Core causal discovery ----------------------------------------------------
+# 0.1.4.0+ is required for NumPy 2.x compatibility.
+causal-learn>=0.1.4.0
+
+# causal-learn lists these as REQUIRED in its docs but they don't always
+# install transitively (pydot in particular fails silently on Windows when
+# Graphviz isn't on PATH). Pin them here so pip is forced to surface the error.
+statsmodels>=0.14
+pydot>=2.0
+
+# --- Scientific stack ---------------------------------------------------------
+# Lower bounds match what the paper / causal-learn use; upper bound on numpy
+# protects against breakage if a future major bump arrives. Adjust freely.
+numpy>=1.23,<3.0
+pandas>=1.5
+scipy>=1.10
+scikit-learn>=1.2
+
+# --- Plotting & utilities -----------------------------------------------------
+matplotlib>=3.6
+seaborn>=0.12
+networkx>=2.8
+tqdm>=4.65
+
+# --- Optional -----------------------------------------------------------------
+# Uncomment if you want the DoWhy-based ATE path mentioned in the README:
+# dowhy>=0.11
