@@ -130,7 +130,7 @@ def main():
             flagged_edges=flagged,
             node_roles=DEFAULT_ROLES_LOAN,
             save_path=f"figures/synthetic_biased_{name.replace('-', '')}.png",
-            layout="kamada",
+            layout="fixed",
         )
         plt.close()
 
@@ -143,7 +143,7 @@ def main():
             flagged_edges=flagged,
             node_roles=DEFAULT_ROLES_LOAN,
             save_path=f"figures/synthetic_unbiased_{name.replace('-', '')}.png",
-            layout="kamada",
+            layout="fixed",  #was "kamada"
         )
         plt.close()
 
@@ -153,7 +153,7 @@ def main():
         node_roles=DEFAULT_ROLES_LOAN,
         title="All algorithms on Biased Dataset (β = -0.15)",
         save_path="figures/synthetic_biased_grid.png",
-        layout="kamada",
+        layout="fixed",    #was "kamada"
     )
     plot_grid(
         results_unbiased,
@@ -161,7 +161,7 @@ def main():
         node_roles=DEFAULT_ROLES_LOAN,
         title="All algorithms on Unbiased Dataset (β = 0)",
         save_path="figures/synthetic_unbiased_grid.png",
-        layout="kamada",
+        layout="fixed",     #was "kamada"
     )
     plt.close("all")
 
