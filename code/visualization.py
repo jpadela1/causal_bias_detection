@@ -57,7 +57,7 @@ from causal_discovery import DiscoveryResult
 
 
 # =============================================================================
-# COLOUR PALETTE  (unchanged from previous version)
+# COLOR PALETTE  (unchanged from previous version)
 # =============================================================================
 
 COLOR_DIRECTED   = "#333333"
@@ -142,7 +142,9 @@ def _build_dot(
     coef_threshold: float,
     node_font_size: int = 16,
     edge_font_size: int = 20,
-    node_width: str = "1.7",     # bigger nodes for print legibility (was 1.4)
+    node_width: str = "1.7",
+    ranksep: str = "4.0",        # ← new; widen for individual DAGs JSP 2.5
+    canvas_size: str = "14,9",   # ← new; aspect ratio of the rendered PNG
 ) -> "gv.Digraph":
     """
     Convert one DiscoveryResult into a graphviz.Digraph.
@@ -174,11 +176,11 @@ def _build_dot(
             rankdir  = "LR",
             splines  = "spline",  # proper B-spline routing — clean, professional
             nodesep  = "0.9",
-            ranksep  = "1.5",
+            ranksep  = ranksep,
             pad      = "0.6",
             bgcolor  = "white",
             fontname = "Helvetica",
-            size     = "14,9",
+            size     = canvas_size,
             ratio    = "fill",
             forcelabels = "true",   # always render xlabels even if crowded
         ),
@@ -270,7 +272,7 @@ def _build_dot(
         if show_coefficients and result.coef_matrix is not None:
             coef = result.get_coefficient(src, dst)
             if coef is not None and abs(coef) >= coef_threshold:
-                label = f"{coef:+.3f}"
+                label = f"{coef:+.4f}"
         if is_fl:
             dot.edge(src, dst,
                      xlabel     = label,      # xlabel works with splines=curved
@@ -519,12 +521,14 @@ def plot_discovery_result(
     _print_edge_summary(result)
 
     dot = _build_dot(
-        result            = result,
-        title             = heading,
-        flagged           = flagged,
-        roles             = roles,
-        show_coefficients = show_coefficients,
-        coef_threshold    = coef_threshold,
+        result=result,
+        title=heading,
+        flagged=flagged,
+        roles=roles,
+        show_coefficients=show_coefficients,
+        coef_threshold=coef_threshold,
+        ranksep="3.5",  # ← new; widens the individual DAGs
+        canvas_size="16,9",  # ← new; matches figsize aspect
     )
 
     # ── Render Graphviz → temp PNG ────────────────────────────────────────────
@@ -536,16 +540,17 @@ def plot_discovery_result(
 
         # ── Compose in matplotlib ─────────────────────────────────────────────
         legend_frac = 0.12 if show_legend else 0.0
+        title_frac = 0.10  # reserve top 10% for the title
         fig = plt.figure(figsize=figsize, facecolor="white")
 
         # Graph image — fills everything above the legend strip
-        ax_g = fig.add_axes([0.0, legend_frac, 1.0, 1.0 - legend_frac])
+        ax_g = fig.add_axes([0.0, legend_frac, 1.0, 1.0 - legend_frac - title_frac])
         if os.path.exists(tmp_png):
             ax_g.imshow(plt.imread(tmp_png), interpolation="lanczos")
         ax_g.axis("off")
 
         # Title — set as a matplotlib suptitle so it appears above the image
-        fig.suptitle(heading, fontsize=13, fontweight="bold", y=0.99)
+        fig.suptitle(heading, fontsize=13, fontweight="bold", y=0.96)
 
         # Legend — horizontal strip at the bottom of the figure
         if show_legend:
@@ -607,9 +612,10 @@ def plot_grid(
     node_roles: Optional[dict] = None,
     title: str = "Discovered DAGs",
     save_path: Optional[str] = None,
-    layout: str = "fixed",        # accepted for API compat, ignored
-    pos: Optional[dict] = None,   # accepted for API compat, ignored
+    layout: str = "fixed",
+    pos: Optional[dict] = None,
     figsize_per_panel: Tuple[float, float] = (7.5, 5.0),
+    panel_titles: Optional[dict] = None,     # ← new
 ):
     """
     Render all algorithm results in a 3-column grid.
@@ -665,7 +671,8 @@ def plot_grid(
             if os.path.exists(png_path):
                 img = plt.imread(png_path)
                 ax.imshow(img, interpolation="lanczos")
-            ax.set_title(alg_name, fontsize=12, fontweight="bold", pad=6)
+            panel_label = (panel_titles or {}).get(alg_name, alg_name)
+            ax.set_title(panel_label, fontsize=12, fontweight="bold", pad=6)
             ax.axis("off")
 
         for ax in axes[n:]:

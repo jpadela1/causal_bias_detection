@@ -1,16 +1,22 @@
 """
 compas_analysis.py
 ==================
-Load and preprocess the COMPAS dataset (Section VI of the paper) and run the
-full causal-discovery + ATE pipeline against it.
+Load and preprocess the ProPublica COMPAS dataset for the paper's Section VI
+analysis, and compute the baseline correlation-based fairness metrics.
 
 Source CSV
 ----------
-ProPublica's compas-scores.csv:
-    https://raw.githubusercontent.com/propublica/compas-analysis/master/compas-scores.csv
+ProPublica's compas-scores-two-years.csv:
+    https://raw.githubusercontent.com/propublica/compas-analysis/master/compas-scores-two-years.csv
 
-If you cannot download from the script (offline / firewall), drop the file at
-    data/compas-scores.csv
+This is the file with the dedicated `two_year_recid` column (730-day window),
+which is what the literature reports rates against. The raw `compas-scores.csv`
+in the same repo uses `is_recid` over a longer/variable observation window and
+should NOT be used when reporting "two-year recidivism rates" -- that was the
+mismatch in the paper's earlier draft.
+
+If you cannot download (offline / firewall), drop the file at
+    data/compas-scores-two-years.csv
 and the loader will pick it up.
 
 ProPublica preprocessing filters
@@ -21,15 +27,24 @@ ProPublica preprocessing filters
 * score_text != "N/A"
 
 Encoded variables (matching the paper's nine-variable schema):
-    Race          : 1 = African-American, 0 = other
-    Sex           : 1 = Male, 0 = Female
+    Race          : 1 = African-American, 0 = Caucasian
+    Sex           : 1 = Male,             0 = Female
     Age           : age in years
     JuvFelony     : juv_fel_count
     JuvMisd       : juv_misd_count
     Priors        : priors_count
-    ChargeDegree  : 1 = Felony (F), 0 = Misdemeanor (M)
+    ChargeDegree  : 1 = Felony (F),       0 = Misdemeanor (M)
     Score         : decile_score (1-10)
-    Recidivism    : two_year_recid (0 or 1)   # is_recid is sometimes used too
+    Recidivism    : two_year_recid (0/1)
+
+Race policy
+-----------
+The paper's published comparison is "African-American vs Caucasian" (the same
+two-group split ProPublica reports). By default `preprocess_compas` therefore
+*filters* to just those two groups so the binary Race=1/0 encoding used by the
+causal discovery algorithms is unambiguous and the reported disparities match
+the literature. Pass `restrict_to_aa_caucasian=False` to keep all races (Race=0
+will then mean "any non-African-American").
 """
 from __future__ import annotations
 
@@ -41,13 +56,15 @@ import pandas as pd
 
 PROPUBLICA_CSV_URL = (
     "https://raw.githubusercontent.com/propublica/compas-analysis/master/"
-    "compas-scores.csv"
+    "compas-scores-two-years.csv"
 )
 
 LOCAL_CSV_PATHS = [
-    "data/compas-scores.csv",
-    "compas-scores.csv",
+    "data/compas-scores-two-years.csv",
+    "compas-scores-two-years.csv",
 ]
+
+CACHE_PATH = "data/compas-scores-two-years.csv"
 
 
 COMPAS_COLUMNS = [
@@ -62,6 +79,12 @@ COMPAS_COLUMNS = [
     "Recidivism",
 ]
 
+# Decile threshold used to define "high risk" for the proper selection-rate
+# DIR. ProPublica's COMPAS labels Low = 1-4, Medium = 5-7, High = 8-10. The
+# paper's adverse-classification analysis follows ProPublica in treating any
+# score >= 5 (Medium or High) as the adverse classification.
+HIGH_RISK_THRESHOLD = 5
+
 
 def _try_local_csv() -> Optional[pd.DataFrame]:
     for p in LOCAL_CSV_PATHS:
@@ -72,7 +95,7 @@ def _try_local_csv() -> Optional[pd.DataFrame]:
 
 
 def load_compas(use_local_only: bool = False) -> pd.DataFrame:
-    """Load the raw ProPublica CSV (no preprocessing applied yet)."""
+    """Load the raw ProPublica two-year CSV (no preprocessing applied yet)."""
     raw = _try_local_csv()
     if raw is not None:
         return raw
@@ -83,14 +106,28 @@ def load_compas(use_local_only: bool = False) -> pd.DataFrame:
         )
     print(f"Downloading COMPAS from {PROPUBLICA_CSV_URL} ...")
     raw = pd.read_csv(PROPUBLICA_CSV_URL)
-    os.makedirs("data", exist_ok=True)
-    raw.to_csv("data/compas-scores.csv", index=False)
-    print("  cached at data/compas-scores.csv")
+    os.makedirs(os.path.dirname(CACHE_PATH) or ".", exist_ok=True)
+    raw.to_csv(CACHE_PATH, index=False)
+    print(f"  cached at {CACHE_PATH}")
     return raw
 
 
-def preprocess_compas(raw: pd.DataFrame) -> pd.DataFrame:
-    """Apply ProPublica filters and encode the nine analysis variables."""
+def preprocess_compas(
+    raw: pd.DataFrame,
+    restrict_to_aa_caucasian: bool = True,
+) -> pd.DataFrame:
+    """Apply ProPublica filters and encode the nine analysis variables.
+
+    Parameters
+    ----------
+    restrict_to_aa_caucasian : bool, default True
+        If True, drops all defendants who are not African-American or
+        Caucasian. The resulting Race=1/0 encoding is then unambiguously
+        "African-American vs Caucasian", matching ProPublica's headline
+        comparison and the paper's text.
+        If False, Race=1 is African-American and Race=0 is everyone else
+        (Caucasian + Hispanic + Asian + Native American + Other).
+    """
     df = raw.copy()
 
     # Standard ProPublica filters
@@ -103,6 +140,9 @@ def preprocess_compas(raw: pd.DataFrame) -> pd.DataFrame:
     if "score_text" in df.columns:
         df = df[df["score_text"].notna() & (df["score_text"] != "N/A")]
 
+    if restrict_to_aa_caucasian:
+        df = df[df["race"].isin(["African-American", "Caucasian"])]
+
     # Encode
     out = pd.DataFrame()
     out["Race"] = (df["race"] == "African-American").astype(int)
@@ -113,77 +153,187 @@ def preprocess_compas(raw: pd.DataFrame) -> pd.DataFrame:
     out["Priors"] = df["priors_count"].astype(float)
     out["ChargeDegree"] = (df["c_charge_degree"] == "F").astype(int)
     out["Score"] = df["decile_score"].astype(float)
-    # The paper uses two_year_recid as the actual outcome; fall back to is_recid.
     if "two_year_recid" in df.columns:
         out["Recidivism"] = df["two_year_recid"].astype(int)
     else:
+        # Fallback for compas-scores.csv (the non-two-years file). This path
+        # should not normally be hit -- we cache the two-years CSV by default.
+        print("  WARNING: two_year_recid column not present; falling back to "
+              "is_recid. Rates from this column do NOT correspond to a "
+              "two-year window.")
         out["Recidivism"] = df["is_recid"].astype(int)
 
     out = out.dropna().reset_index(drop=True)
     return out[COMPAS_COLUMNS]
 
 
+# --------------------------------------------------------------------------- #
+# Baseline correlation-based disparities
+# --------------------------------------------------------------------------- #
+
+def _safe_ratio(num: float, den: float) -> float:
+    """Return num/den, or float('inf') if den == 0."""
+    if den == 0 or den is None or np.isnan(den):
+        return float("inf")
+    return num / den
+
+
 def baseline_disparities(df: pd.DataFrame) -> dict:
-    """Reproduce the paper's baseline numbers: mean Score by race, DIR, parity."""
-    score_minority = df.loc[df["Race"] == 1, "Score"].mean()
-    score_majority = df.loc[df["Race"] == 0, "Score"].mean()
-    rec_minority = df.loc[df["Race"] == 1, "Recidivism"].mean()
-    rec_majority = df.loc[df["Race"] == 0, "Recidivism"].mean()
+    """Compute the paper's Section VI-A baseline numbers.
+
+    All metrics are reported with explicit names so the figure / paper text
+    cannot accidentally compare a mean ratio against the 4/5-rule threshold.
+
+    Returns a dict with:
+
+      Sample sizes
+        n_total, n_AA, n_other
+
+      Group means (descriptive)
+        mean_score_AA, mean_score_other
+
+      Recidivism (rates -- comparable to 0.80 threshold)
+        recid_rate_AA, recid_rate_other
+        DIR_recidivism                  P(recid|AA) / P(recid|other)
+
+      Score disparity, the WRONG way (mean ratio -- NOT comparable to 0.80)
+        mean_score_ratio                mean(Score|AA) / mean(Score|other)
+        stat_parity_score               mean(Score|AA) - mean(Score|other)
+
+      Score disparity, the RIGHT way (selection-rate DIR -- comparable to 0.80)
+        high_risk_rate_AA               P(Score >= 5 | AA)
+        high_risk_rate_other            P(Score >= 5 | other)
+        DIR_score_selection_rate        P(Score>=5|AA) / P(Score>=5|other)
+
+    Notes
+    -----
+    The "selection rate" DIR is what disparate-impact case law and the EEOC
+    four-fifths rule are actually defined for: a ratio of binary outcome
+    rates, bounded in [0, 1] when the favored group is in the denominator.
+    Comparing a mean-of-ordinal-scores ratio against 0.80 -- as the paper's
+    earlier draft did -- is dimensionally incorrect, and reviewers will flag
+    it. Both numbers are returned so the figure can show them side by side
+    and the text can comment on the contrast.
+    """
+    minority = df[df["Race"] == 1]
+    majority = df[df["Race"] == 0]
+
+    score_AA  = float(minority["Score"].mean())
+    score_oth = float(majority["Score"].mean())
+
+    rec_AA  = float(minority["Recidivism"].mean())
+    rec_oth = float(majority["Recidivism"].mean())
+
+    high_AA  = float((minority["Score"] >= HIGH_RISK_THRESHOLD).mean())
+    high_oth = float((majority["Score"] >= HIGH_RISK_THRESHOLD).mean())
 
     return {
-        "mean_score_AA": round(score_minority, 3),
-        "mean_score_other": round(score_majority, 3),
-        "DIR_score": round(score_minority / score_majority, 3) if score_majority else float("inf"),
-        "DIR_recidivism": round(rec_minority / rec_majority, 3) if rec_majority else float("inf"),
-        "stat_parity_score": round(score_minority - score_majority, 3),
-        "stat_parity_recidivism": round(rec_minority - rec_majority, 3),
-        "n_total": len(df),
-        "n_AA": int((df["Race"] == 1).sum()),
-        "n_other": int((df["Race"] == 0).sum()),
+        # Sample sizes
+        "n_total":  len(df),
+        "n_AA":     int(len(minority)),
+        "n_other":  int(len(majority)),
+
+        # Descriptive group means
+        "mean_score_AA":      round(score_AA,  3),
+        "mean_score_other":   round(score_oth, 3),
+
+        # Recidivism rates (rate ratio is a legitimate DIR)
+        "recid_rate_AA":      round(rec_AA,  4),
+        "recid_rate_other":   round(rec_oth, 4),
+        "DIR_recidivism":     round(_safe_ratio(rec_AA, rec_oth), 3),
+
+        # Mean-ratio "DIR" -- DESCRIPTIVE ONLY, not 4/5-rule comparable.
+        "mean_score_ratio":   round(_safe_ratio(score_AA, score_oth), 3),
+        "stat_parity_score":  round(score_AA - score_oth, 3),
+
+        # Selection-rate DIR -- this IS what 4/5 rule is defined for.
+        "high_risk_rate_AA":     round(high_AA,  4),
+        "high_risk_rate_other":  round(high_oth, 4),
+        "DIR_score_selection_rate":
+            round(_safe_ratio(high_AA, high_oth), 3),
+    }
+
+
+def per_race_breakdown(raw: pd.DataFrame) -> pd.DataFrame:
+    """Reproduce the paper's Table III layout: n + recidivism rate per race.
+
+    Operates on the *raw* CSV after applying ProPublica's standard filters
+    (so each race row uses the same denominator definition as the headline
+    n=6,172 sample). Useful as a sanity check that you're computing rates
+    on the right subset.
+    """
+    df = raw.copy()
+    if "days_b_screening_arrest" in df.columns:
+        df = df[df["days_b_screening_arrest"].abs() <= 30]
+    if "is_recid" in df.columns:
+        df = df[df["is_recid"] != -1]
+    if "c_charge_degree" in df.columns:
+        df = df[df["c_charge_degree"].isin(["F", "M"])]
+    if "score_text" in df.columns:
+        df = df[df["score_text"].notna() & (df["score_text"] != "N/A")]
+
+    rows = []
+    for race, sub in df.groupby("race"):
+        n = len(sub)
+        recid = int(sub["two_year_recid"].sum())
+        rate  = recid / n if n else float("nan")
+        rows.append({
+            "race":        race,
+            "n":           n,
+            "recidivated": recid,
+            "rate_pct":    round(rate * 100, 2),
+        })
+    return pd.DataFrame(rows).sort_values("n", ascending=False).reset_index(drop=True)
+
+
+def propublica_contingency(raw: pd.DataFrame, race: str) -> dict:
+    """Reproduce ProPublica's contingency-table FP/FN rates for one race.
+
+    ProPublica computes these on the n=7,214 sample (the full two-years CSV
+    with only the score_text != "N/A" filter), not the n=6,172 logistic-
+    regression sample. We mirror that here so the numbers come out exactly
+    matching the published Black=44.85%/27.99% and White=23.45%/47.72%.
+
+    Returns a dict with keys: FP_rate, FN_rate, PPV, NPV, n.
+    """
+    df = raw.copy()
+    df = df[df["score_text"].notna() & (df["score_text"] != "N/A")]
+    sub = df[df["race"] == race].copy()
+    if len(sub) == 0:
+        return {"n": 0, "FP_rate": float("nan"), "FN_rate": float("nan"),
+                "PPV": float("nan"), "NPV": float("nan")}
+
+    high = sub["score_text"] != "Low"           # Medium or High = "high risk"
+    recid = sub["two_year_recid"] == 1
+
+    # Confusion matrix with high-risk classification as the predictor
+    tp = int(( high & recid).sum())
+    fp = int(( high & ~recid).sum())
+    fn = int((~high & recid).sum())
+    tn = int((~high & ~recid).sum())
+
+    fp_rate = fp / (fp + tn) if (fp + tn) else float("nan")
+    fn_rate = fn / (fn + tp) if (fn + tp) else float("nan")
+    ppv     = tp / (tp + fp) if (tp + fp) else float("nan")
+    npv     = tn / (tn + fn) if (tn + fn) else float("nan")
+
+    return {
+        "n":       len(sub),
+        "FP_rate": round(fp_rate * 100, 2),
+        "FN_rate": round(fn_rate * 100, 2),
+        "PPV":     round(ppv,     2),
+        "NPV":     round(npv,     2),
     }
 
 
 # --------------------------------------------------------------------------- #
-# COMPAS Hypothesized Ground-Truth DAG
+# COMPAS Hypothesized Ground-Truth DAG (unchanged from previous version)
 # --------------------------------------------------------------------------- #
-# Unlike the synthetic dataset, the TRUE causal graph for COMPAS is unknown.
-# What we CAN write down is a "hypothesized" DAG that encodes minimal
-# uncontroversial domain assumptions: the temporal/biological order in which
-# variables come into existence, and which edges are forbidden by that order.
-# Reviewers will accept SHD against this hypothesized DAG as long as it's
-# clearly labeled "hypothesized" and the assumptions are stated.
-#
-# Assumptions (each citable to ProPublica 2016 or basic temporal logic):
-#
-# 1. EXOGENOUS (no incoming edges):
-#    - Race, Sex   : determined at birth, immutable
-#    - Age         : a temporal coordinate, not caused by the other variables
-#                    in this dataset (NB: Race -> Age in some studies, but at
-#                    the time of arrest Age is fixed and exogenous to the
-#                    variables we observe)
-#
-# 2. CRIMINAL HISTORY (caused by demographics, accumulates over time):
-#    - JuvFelony, JuvMisd    : juvenile-court records, by adulthood are fixed
-#    - Priors                : adult criminal history accumulates with Age
-#    - ChargeDegree          : characteristics of the CURRENT charge
-#
-#    Demographics influence these via well-documented socioeconomic and
-#    enforcement-disparity pathways (e.g., Alexander 2010, ProPublica 2016).
-#
-# 3. SCORE (determined by the COMPAS algorithm at arraignment):
-#    - Score is a function of demographics, criminal history, and charge.
-#    - Whether Score directly depends on Race is the empirical question
-#      under audit -- so we INCLUDE it as a hypothesized edge in the
-#      "biased" reference but mark it "auditable" rather than confirmed.
-#
-# 4. RECIDIVISM (the future outcome the score tries to predict):
-#    - Recidivism is the latest event in time -- everything else precedes it.
-#    - Score should NOT directly cause recidivism (the score is a prediction
-#      tool, not a treatment), but Score may be correlated with recidivism
-#      via shared causes. We therefore do NOT include Score -> Recidivism.
-#
-# Edge list below uses (source, target) format and can be passed to
-# structural_hamming_distance() from causal_discovery.py.
+# The TRUE causal graph for COMPAS is unknown. We write a "hypothesized" DAG
+# encoding minimal uncontroversial domain assumptions: temporal/biological
+# order in which variables come into existence and which edges are forbidden.
+# Reviewers accept SHD against this hypothesized DAG if it's clearly labeled
+# "hypothesized" and the assumptions are stated.
 
 COMPAS_GROUND_TRUTH_EDGES = [
     # Demographics -> criminal history pathways
@@ -208,16 +358,13 @@ COMPAS_GROUND_TRUTH_EDGES = [
     # whichever the user is asking about.
     ("Race",         "Score"),
 
-    # History -> recidivism (criminogenic features predict reoffending)
+    # History -> recidivism
     ("Priors",       "Recidivism"),
     ("ChargeDegree", "Recidivism"),
     ("Age",          "Recidivism"),
     ("Sex",          "Recidivism"),
 ]
 
-# Without the auditable Race -> Score edge -- a "fair" reference structure.
-# Compute SHD against this when asking "did the algorithm correctly OMIT
-# the discrimination edge?"
 COMPAS_GROUND_TRUTH_EDGES_FAIR = [
     e for e in COMPAS_GROUND_TRUTH_EDGES
     if not (e[0] == "Race" and e[1] == "Score")
@@ -230,16 +377,8 @@ def get_compas_ground_truth(reference: str = "biased") -> list:
     Parameters
     ----------
     reference : 'biased' or 'fair'
-        - 'biased': includes the auditable Race -> Score edge. Use when you
-          want SHD to count "missing the discrimination edge" as a structural
-          error (i.e., the literature's null hypothesis is that COMPAS IS
-          biased, and an algorithm that doesn't surface this is wrong).
-        - 'fair': excludes Race -> Score. Use when you want SHD to count
-          "spuriously detecting Race -> Score" as a false positive.
-
-    Reporting both is best. The paper figure can then say "SHD vs biased
-    reference: X" and "SHD vs fair reference: Y", showing the algorithm's
-    cost under each hypothesis.
+        - 'biased': includes the auditable Race -> Score edge.
+        - 'fair' : excludes Race -> Score.
     """
     if reference == "biased":
         return list(COMPAS_GROUND_TRUTH_EDGES)
@@ -247,6 +386,11 @@ def get_compas_ground_truth(reference: str = "biased") -> list:
         return list(COMPAS_GROUND_TRUTH_EDGES_FAIR)
     raise ValueError(f"reference must be 'biased' or 'fair', got {reference!r}")
 
+
+# --------------------------------------------------------------------------- #
+# Correlation vs causal comparison figure (unchanged plotting; takes new
+# values from the updated baseline_disparities dict)
+# --------------------------------------------------------------------------- #
 
 def plot_correlation_vs_causal(
     correlation_metrics: dict,
@@ -258,42 +402,9 @@ def plot_correlation_vs_causal(
         "from legitimate criminal-history pathways"
     ),
 ):
-    """Two-panel comparison: correlation-based metrics vs causal estimates.
-
-    Reproduces the paper's "Correlation-Based vs Causal" figure but builds
-    every bar from values you pass in, so it always reflects your live run.
-
-    Parameters
-    ----------
-    correlation_metrics : dict
-        Mapping label -> value for the LEFT panel. Typical keys (any subset
-        is fine; only entries you provide are plotted)::
-
-            {
-                "COMPAS Score\nDisparate Impact\n(\u22650.8 = fair)": 1.545,
-                "COMPAS Score\nStat. Parity\n(=0 = fair)":          1.545,
-                "Recidivism\nDisparate Impact":                     1.471,
-            }
-
-    causal_estimates : dict
-        Mapping label -> value for the RIGHT panel. To handle the case where
-        ICA-LiNGAM and DirectLiNGAM disagree, pass BOTH as separate entries::
-
-            {
-                "ATE Race\u2192Score\n(no controls)":   0.324,
-                "ATE Race\u2192Score\n(full controls)": 0.138,
-                "DirectLiNGAM \u03b2\nRace\u2192Score": 0.134,
-                "ICA-LiNGAM \u03b2\nRace\u2192Score":   0.091,
-            }
-
-        The function automatically draws a delta-arrow between the two
-        adjacent bars whose absolute values are most similar (typically
-        full-controls ATE vs the closest LiNGAM \u03b2). To suppress that
-        arrow, pass ``causal_estimates`` with only one ATE entry.
-
-    save_path : str
-        Basename. Saves both ``.png`` and ``.pdf`` via ``save_figure_dual_format``.
-    """
+    """Two-panel comparison: correlation-based metrics (left) vs causal
+    estimates (right). Every value is supplied by the caller so the figure
+    always reflects the live run."""
     import matplotlib.pyplot as plt
     from visualization import save_figure_dual_format
 
@@ -307,13 +418,11 @@ def plot_correlation_vs_causal(
     axL.bar(range(len(corr_labels)), corr_values,
             color=bar_color_corr, edgecolor="black", linewidth=0.5)
     for i, v in enumerate(corr_values):
-        axL.text(i, v + 0.04, f"{v:.3f}", ha="center", va="bottom",
+        axL.text(i, v + 0.04, f"{v:.4f}", ha="center", va="bottom",
                  fontsize=11, fontweight="bold", color=bar_color_corr)
 
-    # 4/5 rule reference line at y=0.8
     axL.axhline(0.8, color="black", linestyle="--", linewidth=1.5,
                 label="4/5 rule threshold (0.8)")
-    # Faint reference at parity (1.0 for DIR, 0 for stat. parity)
     axL.axhline(1.0, color="gray", linestyle=":", linewidth=0.8, alpha=0.6)
 
     axL.set_xticks(range(len(corr_labels)))
@@ -331,15 +440,12 @@ def plot_correlation_vs_causal(
     causal_labels = list(causal_estimates.keys())
     causal_values = list(causal_estimates.values())
 
-    # Light-to-dark grey gradient: gives "from less adjusted -> more adjusted"
-    # a visual narrative without making bars feel competitive.
     n_causal = len(causal_values)
     if n_causal == 0:
         greys = []
     elif n_causal == 1:
         greys = ["#5A5A5A"]
     else:
-        # Interpolate from light grey (#C8C8C8) to near-black (#3C3C3C)
         greys = []
         for i in range(n_causal):
             level = int(200 - 140 * i / max(n_causal - 1, 1))
@@ -348,13 +454,9 @@ def plot_correlation_vs_causal(
     axR.bar(range(n_causal), causal_values, color=greys,
             edgecolor="black", linewidth=0.5)
     for i, v in enumerate(causal_values):
-        axR.text(i, v + 0.008, f"{v:+.3f}", ha="center", va="bottom",
+        axR.text(i, v + 0.008, f"{v:+.4f}", ha="center", va="bottom",
                  fontsize=11, fontweight="bold")
 
-    # Auto-detect a "controlled-vs-LiNGAM agreement" pair to annotate. We
-    # look for the most-similar adjacent pair (smallest |delta|) among
-    # everything except the very first bar (which is the unadjusted ATE
-    # and would dominate). If no good candidate, skip the arrow silently.
     if n_causal >= 3:
         best_pair = None
         best_delta = float("inf")
@@ -363,8 +465,6 @@ def plot_correlation_vs_causal(
             if d < best_delta:
                 best_delta = d
                 best_pair = (i, i + 1)
-        # Only annotate if the two bars are visibly similar (within 25% of
-        # the larger one). Otherwise drawing an arrow misleads.
         if best_pair is not None:
             v1, v2 = causal_values[best_pair[0]], causal_values[best_pair[1]]
             if max(abs(v1), abs(v2)) > 0 and best_delta / max(abs(v1), abs(v2)) < 0.25:
@@ -379,7 +479,6 @@ def plot_correlation_vs_causal(
                     fontsize=9, color="#C0392B", fontweight="bold",
                 )
 
-    # Side annotation: explain the sign of the estimates
     axR.text(
         0.98, 0.97,
         "Positive \u03b2 = minority\ngroup over-scored\nindependent of risk",
@@ -399,8 +498,6 @@ def plot_correlation_vs_causal(
     )
     axR.grid(axis="y", linestyle=":", alpha=0.3)
 
-    # ===== Figure-level title and layout ===================================
-    # Reserve space at top: row order is suptitle, subtitle, panel titles.
     fig.subplots_adjust(top=0.78, bottom=0.18, left=0.07, right=0.97,
                         wspace=0.25)
     fig.suptitle(title, fontsize=14, fontweight="bold", y=0.96)
@@ -411,10 +508,23 @@ def plot_correlation_vs_causal(
     return fig
 
 
-
-    df = preprocess_compas(raw)
-    print(f"Preprocessed COMPAS: n={len(df)} rows, {df.shape[1]} columns")
+if __name__ == "__main__":
+    # Sanity check when run directly
+    raw = load_compas()
+    df  = preprocess_compas(raw)
+    print(f"\nPreprocessed COMPAS: n={len(df)} rows, {df.shape[1]} columns")
     print(df.head())
     print()
+    print("=== Per-race breakdown (Table III style) ===")
+    print(per_race_breakdown(raw).to_string(index=False))
+    print()
+    print("=== Baseline disparities ===")
     for k, v in baseline_disparities(df).items():
-        print(f"  {k:25s} {v}")
+        print(f"  {k:30s} {v}")
+    print()
+    print("=== ProPublica-style contingency (n=7,214 sample) ===")
+    for race in ["African-American", "Caucasian"]:
+        c = propublica_contingency(raw, race)
+        print(f"  {race:18s} n={c['n']:5d}  "
+              f"FP={c['FP_rate']:5.2f}%  FN={c['FN_rate']:5.2f}%  "
+              f"PPV={c['PPV']:.2f}  NPV={c['NPV']:.2f}")

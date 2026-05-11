@@ -4,23 +4,36 @@ main_compas.py
 Reproduce Study 2 (Section VI): COMPAS recidivism analysis.
 
 Pipeline:
-  1. Load raw ProPublica COMPAS CSV (downloads on first run, then caches).
-  2. Apply ProPublica's standard preprocessing filters.
-  3. Compute baseline correlation-based fairness metrics (DIR, parity).
-  4. Run all six causal discovery algorithms and tabulate Race -> Score
-     and Race -> Priors detections (Table III reproduction).
-  5. Compute shared node positions ONCE from all results (so every
-     individual figure and the grid use identical node coordinates).
-  6. Plot individual DAGs and the algorithm grid.
+  1. Load ProPublica COMPAS two-year CSV (downloads on first run, then caches).
+  2. Apply ProPublica's standard preprocessing filters; restrict to
+     African-American + Caucasian so the binary Race=1/0 encoding matches
+     the paper's published comparison and the ProPublica article.
+  3. Compute baseline correlation-based fairness metrics, including BOTH the
+     descriptive mean-Score ratio AND the proper selection-rate DIR (the one
+     that can legitimately be compared against the 4/5-rule threshold).
+  4. Print ProPublica's contingency-table numbers (FP/FN rates, PPV, NPV) on
+     the n=7,214 sample so the paper anchors to the literature.
+  5. Run all six causal discovery algorithms; tabulate Race -> Score and
+     Race -> Priors detections.
+  6. Plot individual DAGs and the algorithm grid (shared node positions).
   7. Compute backdoor-adjusted ATE with progressive control sets.
+  8. Build the correlation-vs-causal comparison figure with corrected labels.
 
-KEY CHANGE from previous version
----------------------------------
-Both individual plots AND the grid now share the SAME node positions,
-computed once by ``compute_shared_pos(results, layout="kamada")``.
-This guarantees that every figure — whether a single-algorithm panel
-or the 6-panel grid — places nodes identically, making visual
-comparison trivial for readers and reviewers.
+Numbers produced by this pipeline (default AA + Caucasian filter):
+  n_total                    = 5,278
+  n_AA                       = 3,175
+  n_Caucasian                = 2,103
+  mean Score (AA)            = 5.28
+  mean Score (Caucasian)     = 3.64
+  two-year recid rate (AA)   = 52.3%
+  two-year recid rate (Cau)  = 39.1%
+  DIR_score_selection_rate   = 1.74   (proper DIR; comparable to 0.80)
+  mean_score_ratio           = 1.45   (descriptive only; NOT a real DIR)
+  DIR_recidivism             = 1.34   (rate ratio; legitimate DIR)
+
+ProPublica contingency-table numbers on n=7,214 (printed for reference):
+  African-American   FP=44.85%, FN=27.99%
+  Caucasian          FP=23.45%, FN=47.72%
 """
 from __future__ import annotations
 
@@ -35,21 +48,46 @@ from compas_analysis import (
     load_compas,
     preprocess_compas,
     baseline_disparities,
+    per_race_breakdown,
+    propublica_contingency,
     plot_correlation_vs_causal,
 )
 from causal_discovery import run_all, report_convention
 from ate_estimation import (
     backdoor_ate,
     staged_backdoor_ate,
-    disparate_impact_ratio,
-    statistical_parity,
 )
 from visualization import (
     plot_discovery_result,
     plot_grid,
-    compute_shared_pos,        # ← new shared-position helper
+    compute_shared_pos,
     DEFAULT_ROLES_COMPAS,
 )
+def _make_dag_title(name: str, n: int, res, include_n: bool = True) -> str:
+    """Build a per-DAG title with optional n and (when available) the
+    Race->Score β̂.
+    Parameters
+    ----------
+    include_n : bool, default True
+        Set False for grid panels — n is shown once in the grid suptitle
+        instead, avoiding the redundant repetition across all six panels.
+    """
+    beta = None
+    if res is not None and res.coef_matrix is not None:
+        try:
+            beta = res.get_coefficient("Race", "Score")
+        except Exception:
+            beta = None
+
+    parts = []
+    if include_n:
+        parts.append(f"n={n:,}")
+    if beta is not None:
+        parts.append(r"$\hat{\beta}$" + f"={beta:+.4f}")
+
+    if parts:
+        return f"{name}\n" + ", ".join(parts)
+    return name
 
 
 def main():
@@ -68,19 +106,53 @@ def main():
     print()
     report_convention()
 
+    # ---------------------------------------------------------------------
     # 1. Load + preprocess
+    # ---------------------------------------------------------------------
     raw = load_compas()
-    df  = preprocess_compas(raw)
-    print(f"\nPreprocessed COMPAS shape: {df.shape}")
-    print(df.describe().round(3))
+    df  = preprocess_compas(raw, restrict_to_aa_caucasian=True)
+    print(f"\nPreprocessed COMPAS shape: {df.shape}  "
+          f"(filtered to African-American + Caucasian)")
 
-    # 2. Baseline disparities
+    # ---------------------------------------------------------------------
+    # 2. Per-race breakdown (Table III style) on the standard
+    #    ProPublica-filtered sample BEFORE the AA/Cau restriction. This
+    #    gives reviewers the same per-race rate table they see in
+    #    ProPublica + comparison papers.
+    # ---------------------------------------------------------------------
+    print("\n=== Per-race breakdown (Table III; ProPublica filters, all races) ===")
+    print(per_race_breakdown(raw).to_string(index=False))
+
+    # ---------------------------------------------------------------------
+    # 3. Baseline disparities (correlation-based)
+    # ---------------------------------------------------------------------
     print("\n=== Baseline disparities (correlation-based) ===")
     base = baseline_disparities(df)
     for k, v in base.items():
-        print(f"  {k:25s} {v}")
+        print(f"  {k:30s} {v}")
 
-    # 3. Causal discovery
+    # Highlight the contrast between the two ways of computing "DIR"
+    print("\n  --- Score disparity, two ways ---")
+    print(f"  Mean-ratio (paper's old metric, NOT 4/5-rule comparable): "
+          f"{base['mean_score_ratio']}")
+    print(f"  Selection-rate DIR P(Score>=5|AA)/P(Score>=5|Cau): "
+          f"{base['DIR_score_selection_rate']}  "
+          f"(0.80 threshold applies to this one)")
+
+    # ---------------------------------------------------------------------
+    # 4. ProPublica's contingency-table numbers on n=7,214 sample
+    # ---------------------------------------------------------------------
+    print("\n=== ProPublica contingency-table reproduction (n=7,214 sample) ===")
+    print("  (These should match the published 44.85/27.99 and 23.45/47.72)")
+    for race in ["African-American", "Caucasian"]:
+        c = propublica_contingency(raw, race)
+        print(f"  {race:18s} n={c['n']:5d}  "
+              f"FP={c['FP_rate']:5.2f}%  FN={c['FN_rate']:5.2f}%  "
+              f"PPV={c['PPV']:.2f}  NPV={c['NPV']:.2f}")
+
+    # ---------------------------------------------------------------------
+    # 5. Causal discovery
+    # ---------------------------------------------------------------------
     print("\n=== Running causal discovery on COMPAS ===")
     results = run_all(
         df,
@@ -93,7 +165,7 @@ def main():
         print(res.summary())
         print()
 
-    # 4. Tabulate Race->Score and Race->Priors detections (Table IV)
+    # Tabulate Race->Score and Race->Priors detections (Table IV)
     rows = []
     for name, res in results.items():
         if res is None:
@@ -118,20 +190,13 @@ def main():
     print(table4.to_string(index=False))
     table4.to_csv("results/compas_summary.csv", index=False)
 
-    # -------------------------------------------------------------------------
-    # 5. Compute shared node positions ONCE
-    # -------------------------------------------------------------------------
-    # compute_shared_pos() prefers the domain-aware fixed layout (outcomes on
-    # the far right at x=10, protected attributes on the far left at x=0).
-    # This enforces a clear left→right causal direction in every figure.
-    # Falls back to kamada-kawai only if the variable set is unrecognised.
+    # ---------------------------------------------------------------------
+    # 6. Shared node positions + DAG figures (individual + grid)
+    # ---------------------------------------------------------------------
     print("\n--- Computing shared node positions (fixed layout: outcomes right) ---")
-    shared_pos = compute_shared_pos(results)   # layout="fixed" by default
+    shared_pos = compute_shared_pos(results)
     print(f"  Positions computed for: {list(shared_pos.keys())}")
 
-    # -------------------------------------------------------------------------
-    # 6. DAG figures — individual + grid
-    # -------------------------------------------------------------------------
     flagged = [("Race", "Score"), ("Race", "Priors")]
 
     print("\n--- Plotting individual DAGs ---")
@@ -140,28 +205,33 @@ def main():
             continue
         plot_discovery_result(
             res,
-            title       = f"{name} on COMPAS (n={len(df)})",
-            flagged_edges = flagged,
-            node_roles  = DEFAULT_ROLES_COMPAS,
-            pos         = shared_pos,       # ← same positions as the grid
-            save_path   = f"figures/compas_{name.replace('-', '')}.pdf",
+            title=_make_dag_title(name, len(df), res),
+            flagged_edges=flagged,
+            node_roles=DEFAULT_ROLES_COMPAS,
+            pos=shared_pos,
+            save_path=f"figures/compas_{name.replace('-', '')}.pdf",
         )
         plt.close()
 
     print("\n--- Plotting algorithm grid ---")
+    panel_titles = {
+        name: _make_dag_title(name, len(df), res, include_n=False)
+        for name, res in results.items() if res is not None
+    }
     plot_grid(
         results,
-        flagged_edges  = flagged,
-        node_roles     = DEFAULT_ROLES_COMPAS,
-        title          = "All algorithms on COMPAS",
-        pos            = shared_pos,        # ← same positions as individuals
-        save_path      = "figures/compas_grid.pdf",
+        flagged_edges=flagged,
+        node_roles=DEFAULT_ROLES_COMPAS,
+        title=f"All algorithms on COMPAS, n={len(df):,}",
+        pos=shared_pos,
+        panel_titles=panel_titles,
+        save_path="figures/compas_grid.pdf",
     )
     plt.close("all")
 
-    # -------------------------------------------------------------------------
-    # 7. Backdoor-adjustment ATE (Equations 1-3 in the paper)
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
+    # 7. Backdoor-adjustment ATE (Equations 5-8 in the paper)
+    # ---------------------------------------------------------------------
     print("\n=== Backdoor ATE: Race -> Score ===")
     print("Formula: ATE = E_Z[ E[Y|T=1,Z] - E[Y|T=0,Z] ]")
     print("Under linearity: ATE_hat = OLS coefficient on Race after controlling for Z")
@@ -176,35 +246,47 @@ def main():
     print(ate_table.to_string(index=False))
     ate_table.to_csv("results/compas_ate.csv", index=False)
 
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     # 8. Side-by-side: correlation-based vs causal estimates
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
     print("\n=== Correlation-based vs causal estimates for Race -> Score ===")
-    dir_score = disparate_impact_ratio(df, "Race", "Score")
-    sp_score  = statistical_parity(df, "Race", "Score")
     ate_full, _ = backdoor_ate(
         df, "Race", "Score",
         ["Age", "ChargeDegree", "JuvFelony", "JuvMisd", "Priors"],
     )
-    print(f"  DIR (Score)                = {dir_score:.3f}")
-    print(f"  Statistical parity (Score) = {sp_score:+.3f}")
-    print(f"  Raw ATE (no controls)      = {ate_table.iloc[0]['ATE']:+.3f}")
-    print(f"  ATE (full controls)        = {ate_full:+.3f}")
+    print(f"  Mean-Score ratio (descriptive)    = {base['mean_score_ratio']:.4f}")
+    print(f"  Selection-rate DIR (proper)       = {base['DIR_score_selection_rate']:.4f}")
+    print(f"  DIR_recidivism (rate ratio)       = {base['DIR_recidivism']:.4f}")
+    print(f"  Statistical parity (Score)        = {base['stat_parity_score']:+.4f}")
+    print(f"  Raw ATE (no controls)             = {ate_table.iloc[0]['ATE']:+.4f}")
+    print(f"  ATE (full controls)               = {ate_full:+.4f}")
 
     beta_dl = beta_ica = None
     if results.get("DirectLiNGAM") is not None:
         beta_dl = results["DirectLiNGAM"].get_coefficient("Race", "Score")
-        print(f"  DirectLiNGAM beta_hat      = {beta_dl:+.4f}")
+        print(f"  DirectLiNGAM beta_hat             = {beta_dl:+.4f}")
     if results.get("ICA-LiNGAM") is not None:
         beta_ica = results["ICA-LiNGAM"].get_coefficient("Race", "Score")
-        print(f"  ICA-LiNGAM   beta_hat      = {beta_ica:+.4f}")
+        print(f"  ICA-LiNGAM   beta_hat             = {beta_ica:+.4f}")
 
+    # -----------------------------------------------------------------
     # Correlation vs causal comparison figure
+    # -----------------------------------------------------------------
+    # The LEFT panel shows fairness metrics that "detect that bias exists".
+    # We show:
+    #   (a) the proper selection-rate DIR (legitimately compared to 0.80);
+    #   (b) the recidivism DIR (rate ratio);
+    #   (c) the mean-Score ratio with an asterisk in the label so readers
+    #       see it's the *descriptive* version, not a real DIR.
+    # -----------------------------------------------------------------
     print("\n=== Generating correlation-vs-causal comparison figure ===")
     correlation_metrics = {
-        "COMPAS Score\nDisparate Impact\n(\u22650.8 = fair)": base["DIR_score"],
-        "COMPAS Score\nStat. Parity\n(=0 = fair)":           base["stat_parity_score"],
-        "Recidivism\nDisparate Impact":                       base["DIR_recidivism"],
+        "COMPAS Score\nSelection-rate DIR\n(\u22650.8 = fair)":
+            base["DIR_score_selection_rate"],
+        "Recidivism\nDisparate Impact\n(rate ratio)":
+            base["DIR_recidivism"],
+        "COMPAS Score\nMean ratio\n(descriptive*)":
+            base["mean_score_ratio"],
     }
     causal_estimates = {
         "ATE Race\u2192Score\n(no controls)":   ate_table.iloc[0]["ATE"],
@@ -222,6 +304,10 @@ def main():
     )
 
     print("\nAll outputs written to results/ and figures/")
+    print("\n*Note: 'Mean ratio' in the figure is shown for transparency but the")
+    print(" 4/5-rule threshold (dashed line at 0.8) only applies to selection-")
+    print(" rate metrics, not means of ordinal scores. The selection-rate DIR")
+    print(" is the legally meaningful one.")
 
 
 if __name__ == "__main__":
