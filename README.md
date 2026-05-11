@@ -17,6 +17,7 @@ causal_bias_audit/
 ├── visualization.py          # DAG plotting (matches the paper's color scheme)
 ├── sensitivity_analysis.py   # Sweep over beta and n (Section V)
 ├── compas_analysis.py        # COMPAS load + ProPublica preprocessing
+|---bootstrap_ci.py           # Bootstrap executable
 ├── main_synthetic.py         # Run Study 1 (Section IV)
 ├── main_sensitivity.py       # Run Study 1.5 (Section V)
 ├── main_compas.py            # Run Study 2 (Section VI)
@@ -54,6 +55,7 @@ writes CSV summaries to `results/` and PNG figures to `figures/`.
 python main_synthetic.py     # Study 1 - ~30 seconds
 python main_sensitivity.py   # Section V - several minutes (small grid)
 python main_compas.py        # Study 2 - ~1 minute (downloads ~5 MB CSV)
+python bootstrap_ci.py
 ```
 
 To run the **full** sensitivity grid that the paper reports
