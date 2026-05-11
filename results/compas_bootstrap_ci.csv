@@ -1,0 +1,4 @@
+estimator,point_estimate,boot_mean,boot_se,ci_lo,ci_hi,ci_excludes_0,n_iter,n_failed
+ATE (full controls),0.5255,0.5289,0.0694,0.395,0.6631,True,1000,0
+DirectLiNGAM β̂ Race→Score,0.5097,0.512,0.0638,0.3847,0.6371,True,1000,0
+ICA-LiNGAM β̂ Race→Score,1.2108,1.2112,0.0719,1.0694,1.3454,True,1000,0

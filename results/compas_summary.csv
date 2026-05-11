@@ -1,0 +1,7 @@
+algorithm,Race->Score,Race->Priors,lat_conf,beta_hat
+PC,no,YES,False,
+FCI,no,no,True,
+GES,no,no,False,
+GRaSP,no,no,False,
+ICA-LiNGAM,YES,YES,False,1.2105
+DirectLiNGAM,YES,YES,False,0.5167
