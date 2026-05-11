@@ -26,6 +26,8 @@ causal_bias_audit/
 └── results/                  # CSV summary tables written here
 ```
 
+Use the compas-scores-two-years.csv file
+
 ## PyCharm setup
 
 1. **Open the folder** `causal_bias_audit/` in PyCharm (`File > Open`).
