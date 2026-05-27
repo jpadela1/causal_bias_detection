@@ -18,8 +18,7 @@ the ATE is identified by the coefficient on T:
     ATE_hat = beta_T_hat   (the OLS coefficient on T after adjusting for Z)
 
 This is the regression-adjustment estimator. It coincides with Pearl's
-backdoor adjustment under the linearity / no-interaction assumption, and is
-what the paper reports in Equations (1)-(3).
+backdoor adjustment under the linearity / no-interaction assumption.
 """
 from __future__ import annotations
 
@@ -104,7 +103,7 @@ def staged_backdoor_ate(
               ("age + charge", ["Age", "ChargeDegree"]),
               ("full history", ["Age", "ChargeDegree", "JuvFel", "JuvMisd", "Priors"])]
 
-    Returns
+    Returns (expected)
     -------
     DataFrame with columns [stage, ATE, SE, n_controls, controls]
     """
@@ -133,8 +132,6 @@ def disparate_impact_ratio(
     For continuous outcomes (e.g. COMPAS decile score, continuous Loan score):
         DIR = mean(Y | group=1) / mean(Y | group=0)
 
-    Following the paper's convention. A DIR > 1.25 (or < 0.80, the 4/5 rule
-    threshold) flags a disparity.
     """
     series = data[outcome].dropna()
     is_binary = series.nunique() <= 2 and set(series.unique()).issubset({0, 1, 0.0, 1.0})
