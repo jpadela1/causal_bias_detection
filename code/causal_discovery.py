@@ -1,7 +1,7 @@
 """
 causal_discovery.py
 ===================
-Unified wrappers around the six causal discovery algorithms used in the paper:
+Unified wrappers around the six causal discovery algorithms used:
 
     Constraint-based : PC, FCI
     Score-based      : GES
@@ -191,7 +191,7 @@ def _detect_causal_learn_convention() -> str:
             return "standard"
         if trn_score > std_score:
             return "transposed"
-        # Tie (e.g. PC left edges undirected) -- fall back to standard.
+        # Tie (e.g. if PC left edges undirected) -- fall back to standard.
         return "standard"
     except Exception:
         # Any failure: don't crash, just use the documented convention.
@@ -208,7 +208,7 @@ def _get_convention() -> str:
 def report_convention(verbose: bool = True) -> str:
     """Detect (if not yet cached) and report which causal-learn convention
     is in effect. Call once after running an algorithm to confirm the
-    auto-detector picked the correct interpretation. If your algorithm
+    auto-detector picked the correct interpretation. If the algorithm
     DAGs are coming out reversed, this is the first thing to inspect.
 
     Returns either "standard" or "transposed".
@@ -398,7 +398,7 @@ def _build_prior_knowledge_matrix(
     the same convention as the LiNGAM ``adjacency_matrix_`` output, so it
     is internally consistent within the package -- but it is the OPPOSITE
     of the more common 'pk[from, to]' convention used by some other
-    libraries. Get this wrong and the algorithm will treat your sources
+    libraries. Get this wrong and the algorithm will treat sources
     as sinks and vice versa.
 
     Therefore:
@@ -529,7 +529,7 @@ def run_all(
     which line of its code raised the error.
 
     The ``direct_lingam_*`` parameters are forwarded only to
-    DirectLiNGAM and let you fix exogenous variables / sinks for
+    DirectLiNGAM and can fix exogenous variables / sinks for
     datasets where LiNGAM's noise assumption fails (typical for
     real-world data with discrete variables, e.g. COMPAS). Pass
     ``direct_lingam_exogenous=['Race', 'Sex', 'Age']`` to anchor
@@ -618,11 +618,13 @@ def structural_hamming_distance(
         shd += 1
     return shd
 
-
+#Toggle with n=1000 and GRaSP fails with an SHD of 16 on the biased dataset
+# At n=5000, GRaSP succeeds with an SHD of 3 on the biased, but the unbiased is high at 11.
+#LiNGAM's are the same at both. GES has spurious edges.
 if __name__ == "__main__":
     from synthetic_data import generate_paired_datasets
 
-    A, B = generate_paired_datasets(n=1000, beta_biased=-0.15, seed=42)
+    A, B = generate_paired_datasets(n=5000, beta_biased=-0.15, seed=42)
     print("Running all algorithms on Dataset A (biased)...\n")
     results = run_all(A)
     for name, res in results.items():
