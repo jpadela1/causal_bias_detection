@@ -138,9 +138,7 @@ def _detect_causal_learn_convention() -> str:
     The chain has strong linear effects and non-Gaussian noise, so PC
     should reliably orient *both* edges (every edge is part of a v-structure-
     forming pattern when seen as part of the wider DAG, and on this small
-    case the orientations are stably identifiable). We then read the graph
-    matrix under each interpretation and pick the one that matches the
-    ground truth.
+    case the orientations are stably identifiable).
 
     Falls back to "standard" if the test fails to import / run / produce a
     confident answer.
@@ -384,9 +382,7 @@ def _build_prior_knowledge_matrix(
     forbidden_edges: Optional[List[Tuple[str, str]]] = None,
 ) -> Optional[np.ndarray]:
     """Construct a causal-learn prior_knowledge matrix.
-
-    Convention from LiNGAM official docs (verified against the
-    visualization helper at lingam.readthedocs.io/tutorial/pk_direct):
+    Convention from LiNGAM official docs at lingam.readthedocs.io/tutorial/pk_direct:
 
         pk[i, j]  = 1  -> edge j -> i is REQUIRED
         pk[i, j]  = 0  -> edge j -> i is FORBIDDEN
@@ -468,11 +464,6 @@ def run_direct_lingam(
     forbidden_edges: Optional[List[Tuple[str, str]]] = None,
 ) -> DiscoveryResult:
     """Run DirectLiNGAM, optionally with prior knowledge.
-
-    Pass ``exogenous`` / ``sinks`` / ``forbidden_edges`` for real-world
-    datasets where LiNGAM's continuous-noise assumption is violated.
-    Without prior knowledge, the algorithm can produce orderings that
-    contradict basic domain knowledge (e.g., ChargeDegree -> Race).
     """
     *_, cl_lingam = _import_causal_learn()
     variables = list(data.columns)
@@ -491,8 +482,7 @@ def run_ica_lingam(
 ) -> DiscoveryResult:
     """Run ICA-LiNGAM. ICA-LiNGAM does not accept prior knowledge in
     causal-learn (only DirectLiNGAM does), so this wrapper takes no
-    knowledge arguments. If you need prior knowledge on COMPAS-like
-    data, use ``run_direct_lingam`` instead.
+    knowledge arguments.
     """
     *_, cl_lingam = _import_causal_learn()
     variables = list(data.columns)
@@ -523,18 +513,10 @@ def run_all(
     direct_lingam_forbidden_edges: Optional[List[Tuple[str, str]]] = None,
 ) -> dict:
     """Run every algorithm and return {name: DiscoveryResult}.
-
     When ``verbose_errors=True`` (default), failures print the full
     traceback so you can see exactly which causal-learn function and
     which line of its code raised the error.
 
-    The ``direct_lingam_*`` parameters are forwarded only to
-    DirectLiNGAM and can fix exogenous variables / sinks for
-    datasets where LiNGAM's noise assumption fails (typical for
-    real-world data with discrete variables, e.g. COMPAS). Pass
-    ``direct_lingam_exogenous=['Race', 'Sex', 'Age']`` to anchor
-    immutable demographics as roots of the causal order. ICA-LiNGAM
-    cannot use prior knowledge in causal-learn and runs unconstrained.
     """
     import traceback
     skip = set(skip or [])
@@ -581,7 +563,6 @@ def structural_hamming_distance(
     result: DiscoveryResult, ground_truth_edges: List[Tuple[str, str]]
 ) -> int:
     """SHD = #(edges added) + #(edges deleted) + #(edges reversed).
-
     Both directed and undirected predicted edges are counted; an undirected
     prediction is treated as a wrong orientation (counts as a reversal-style
     error if the true edge has the opposite direction; otherwise as an extra
@@ -623,7 +604,6 @@ def structural_hamming_distance(
 #LiNGAM's are the same at both. GES has spurious edges.
 if __name__ == "__main__":
     from synthetic_data import generate_paired_datasets
-
     A, B = generate_paired_datasets(n=5000, beta_biased=-0.15, seed=42)
     print("Running all algorithms on Dataset A (biased)...\n")
     results = run_all(A)

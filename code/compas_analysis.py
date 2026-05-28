@@ -179,7 +179,7 @@ def _safe_ratio(num: float, den: float) -> float:
 
 
 def baseline_disparities(df: pd.DataFrame) -> dict:
-    """Compute the paper's Section VI-A baseline numbers.
+    """Compute baseline numbers.
 
     All metrics are reported with explicit names so the figure / paper text
     cannot accidentally compare a mean ratio against the 4/5-rule threshold.
@@ -210,9 +210,7 @@ def baseline_disparities(df: pd.DataFrame) -> dict:
     The "selection rate" DIR is what disparate-impact case law and the EEOC
     four-fifths rule are actually defined for: a ratio of binary outcome
     rates, bounded in [0, 1] when the favored group is in the denominator.
-    Comparing a mean-of-ordinal-scores ratio against 0.80 -- as the paper's
-    earlier draft did -- is dimensionally incorrect, and reviewers will flag
-    it. Both numbers are returned so the figure can show them side by side
+     Both numbers are returned so the figure can show them side by side
     and the text can comment on the contrast.
     """
     minority = df[df["Race"] == 1]
@@ -255,8 +253,7 @@ def baseline_disparities(df: pd.DataFrame) -> dict:
 
 
 def per_race_breakdown(raw: pd.DataFrame) -> pd.DataFrame:
-    """Reproduce the paper's Table III layout: n + recidivism rate per race.
-
+    """
     Operates on the *raw* CSV after applying ProPublica's standard filters
     (so each race row uses the same denominator definition as the headline
     n=6,172 sample). Useful as a sanity check that you're computing rates
@@ -289,12 +286,7 @@ def per_race_breakdown(raw: pd.DataFrame) -> pd.DataFrame:
 def propublica_contingency(raw: pd.DataFrame, race: str) -> dict:
     """Reproduce ProPublica's contingency-table FP/FN rates for one race.
 
-    ProPublica computes these on the n=7,214 sample (the full two-years CSV
-    with only the score_text != "N/A" filter), not the n=6,172 logistic-
-    regression sample. We mirror that here so the numbers come out exactly
-    matching the published Black=44.85%/27.99% and White=23.45%/47.72%.
-
-    Returns a dict with keys: FP_rate, FN_rate, PPV, NPV, n.
+     Returns a dict with keys: FP_rate, FN_rate, PPV, NPV, n.
     """
     df = raw.copy()
     df = df[df["score_text"].notna() & (df["score_text"] != "N/A")]
@@ -327,7 +319,7 @@ def propublica_contingency(raw: pd.DataFrame, race: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# COMPAS Hypothesized Ground-Truth DAG (unchanged from previous version)
+# COMPAS Hypothesized Ground-Truth DAG (if used)
 # --------------------------------------------------------------------------- #
 # The TRUE causal graph for COMPAS is unknown. We write a "hypothesized" DAG
 # encoding minimal uncontroversial domain assumptions: temporal/biological

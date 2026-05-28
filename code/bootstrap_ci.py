@@ -2,7 +2,7 @@
 bootstrap_ci.py
 ===============
 Compute bootstrap 95% confidence intervals for the three COMPAS estimates
-that anchor the "convergent evidence" claim in Section VII-a:
+that anchor the "convergent evidence" claim.
     1. Backdoor-adjusted ATE (OLS, Race -> Score with full controls)
     2. DirectLiNGAM beta-hat (Race -> Score edge coefficient)
     3. ICA-LiNGAM beta-hat (Race -> Score edge coefficient)
@@ -42,7 +42,7 @@ BASE_SEED = 42       # for reproducibility
 CI_LEVEL = 95        # report the 2.5th and 97.5th percentiles
 ALPHA = (100 - CI_LEVEL) / 2  # = 2.5
 
-# Backdoor adjustment set used in Section VI-C "full controls"
+# Backdoor adjustment set used "full controls"
 FULL_CONTROLS = ["Age", "ChargeDegree", "JuvFelony", "JuvMisd", "Priors"]
 
 

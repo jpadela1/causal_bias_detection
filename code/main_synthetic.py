@@ -1,12 +1,10 @@
 """
 main_synthetic.py
 =================
-Reproduce Study 1 (Section IV): synthetic loan-approval analysis.
-
+Study 1: synthetic loan-approval analysis.
 
 From the sensitivity dataset and to provide an equivalent comparison data using a similar size ground truth of
 5,000
-
 
 Run this first. It will:
   1. Generate Dataset A (biased, beta=-0.15) and Dataset B (unbiased, beta=0).
@@ -41,7 +39,7 @@ from sensitivity_analysis import (
 
 def _make_dag_title(name: str, n: int, res, include_n: bool = True) -> str:
     """Build a per-DAG title with optional n and (when available) the
-    Race->Loan β̂. For Study 1 the audited edge is Race->Loan."""
+    Race->Loan β̂. For Study 1 the edge expected to display discrimination bias is Race->Loan."""
     beta = None
     if res is not None and res.coef_matrix is not None:
         try:
@@ -95,7 +93,7 @@ def main():
     print()
     report_convention()
 
-    # Render the ground-truth DAG up front so reviewers can compare every
+    # Render the ground-truth DAG up front to compare every
     # algorithm's recovered graph against the SCM that generated the data.
     print("\n--- Rendering ground-truth DAG ---")
     plot_ground_truth_dag(

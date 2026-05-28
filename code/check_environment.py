@@ -1,22 +1,20 @@
 """
 Environment diagnostic for the causal_bias_audit project.
 
-Run this FIRST in PyCharm, BEFORE any of the main_*.py scripts:
+Run this FIRST in IDE, BEFORE any of the main_*.py scripts:
 
     Right-click check_environment.py in the Project pane > Run
 
 If you see ModuleNotFoundError or "missing packages" elsewhere, this script
 isolates the cause. It does four things in order:
 
-    1. Prints which Python interpreter is running this code (the #1 source of
-       PyCharm "I just installed it, why isn't it found?" issues).
+    1. Prints which Python interpreter is running this code
     2. Tries to import every required package and reports versions.
     3. Probes the causal-learn submodules we actually use, since some of them
        have non-obvious internal dependencies (pydot + system graphviz).
     4. Suggests a copy-pasteable pip command for whatever's missing.
 
-Nothing in this script imports from the project itself, so it works even if
-your environment is half-broken.
+
 """
 
 from __future__ import annotations

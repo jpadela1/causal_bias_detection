@@ -6,7 +6,7 @@ Generate the synthetic loan-approval datasets used in Study 1 of the paper.
 Structural Causal Model (SCM)
 -----------------------------
 Latent:
-    SES ~ N(0, 1)                                              (hidden confounder
+    SES ~ N(0, 1)                                            (hidden confounder
                                                                  of Education & Income;
                                                                  detectable by FCI as a
                                                                  bidirected edge)
@@ -26,12 +26,8 @@ Covariates:
 Outcome (continuous "loan-approval score" by default):
     Loan = 0.5*CreditSc + 0.4*Income + beta*Race + e_L,    e_L ~ Uniform(-1, 1)
 
-We use a CONTINUOUS Loan score because the paper reports LiNGAM recovering
-beta_hat = -0.179 for a planted beta = -0.15 -- a linear-coefficient match
-that is only meaningful if the outcome is linear in its parents. Pass
-`binary_outcome=True` to threshold Loan into {0, 1} (sigmoid then Bernoulli);
-in that mode LiNGAM will recover roughly beta * sigma'(z) instead of beta
-itself.
+
+Reset the n=5,000 including synthetic data samples, loan dataset
 
 Datasets:
     Dataset A (biased)   : beta = -0.15  (planted direct discrimination)
@@ -53,7 +49,7 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 
 
 def generate_loan_data(
-    n: int = 1000,
+    n: int = 5000,
     beta: float = -0.15,
     seed: int = 42,
     return_latent: bool = False,
@@ -68,7 +64,7 @@ def generate_loan_data(
     beta : float
         Coefficient on the planted Race -> Loan edge. Use 0.0 for unbiased.
     seed : int
-        RNG seed (paper uses 42).
+        RNG seed (42).
     return_latent : bool
         If True, include the hidden SES column (for diagnostics only).
     binary_outcome : bool
@@ -108,7 +104,7 @@ def generate_loan_data(
     )
     CreditSc = 0.40 * Education + 0.30 * ZIP + 0.30 * Income + eC
 
-    # Linear outcome (matches paper's LiNGAM-coefficient-recovery setup)
+    # Linear outcome (LiNGAM-coefficient-recovery setup)
     Loan_score = 0.5 * CreditSc + 0.4 * Income + beta * Race + eL
 
     if binary_outcome:
@@ -132,7 +128,7 @@ def generate_loan_data(
 
 
 def generate_paired_datasets(
-    n: int = 1000,
+    n: int = 5000,
     beta_biased: float = -0.15,
     seed: int = 42,
     binary_outcome: bool = False,
@@ -154,8 +150,8 @@ def generate_paired_datasets(
 
 GROUND_TRUTH_EDGES = [
     # (source, target, coefficient_label)
-    ("SES",       "Education", "0.40"),     # latent confounder
-    ("SES",       "Income",    "0.40"),     # latent confounder
+    ("SES",       "Education", "0.40"),     # latent confounder positive magnitude to the likelihood; higher ed->higher likelihood
+    ("SES",       "Income",    "0.40"),     # latent confounder positive magnitude to the likelihood
     ("Gender",    "Education", "0.30"),
     ("Gender",    "Income",    "0.15"),
     ("Race",      "ZIP",       "-0.50"),
@@ -190,8 +186,6 @@ def plot_ground_truth_dag(
 ):
     """Render the SCM as a DAG figure.
 
-    Saves both PNG and PDF.
-
     Parameters
     ----------
     save_path : str
@@ -209,11 +203,8 @@ def plot_ground_truth_dag(
     from matplotlib.lines import Line2D
     from matplotlib.patches import FancyArrowPatch, Patch
 
-    # Layered LEFT-TO-RIGHT positions matching the paper's reference
-    # figures: protected attributes & latent on the left, mediators in
-    # the middle, the Loan outcome pinned on the right. The flagged
-    # Race -> Loan edge sweeps along the bottom margin without overlapping
-    # any other node.
+    # Layered LEFT-TO-RIGHT positions
+
     pos = {
         # column 0 (left): exogenous protected attributes + latent confounder
         "Race":      (-3.0,  1.8),
@@ -234,7 +225,7 @@ def plot_ground_truth_dag(
         "latent":    "#FFFFFF",   # white fill, dashed border (drawn below)
         "protected": "#A6CEE3",   # soft sky blue
         "proxy":     "#FDB863",   # pale orange
-        "covariate": "#CCCCCC",   # light grey
+        "covariate": "#CCCCCC",   # light gray
         "mediator":  "#A6DBA0",   # pastel green
         "outcome":   "#FBB4AE",   # soft pink
     }
@@ -349,9 +340,7 @@ def plot_ground_truth_dag(
             ax.scatter(
                 x, y, s=NODE_SIZE, c=face, edgecolors=edge_color,
                 linewidths=edge_lw, zorder=4,
-                # matplotlib doesn't support per-marker linestyle on scatter;
-                # we'll redraw the latent border with a plot circle below.
-            )
+                 )
             if role == "latent":
                 # Overlay a dashed circle for the latent node
                 circle = plt.Circle(

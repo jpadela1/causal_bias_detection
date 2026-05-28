@@ -1,11 +1,10 @@
 """
 sensitivity_analysis.py
 =======================
-Reproduce the sensitivity-analysis grid from Section V of the paper.
 
-Sweeps:
-    bias coefficient  beta in {0.00, 0.05, 0.10, 0.15, 0.20, 0.25}   (sign-flipped: paper uses negative beta)
-    sample size       n    in {1000, 50000}                          (configurable)
+Uses:
+    bias coefficient  beta in {0.00, 0.05, 0.10, 0.15, 0.20, 0.25}   (sign-flipped: Study 1 uses negative beta)
+    sample size       n    in {1000, 5000, 10000, 50000}             (configurable)
     repetitions       20 random seeds per cell                       (configurable)
 
 For each (beta, n, seed) cell we record:
@@ -59,7 +58,6 @@ def run_sensitivity_grid(
     out_csv: str = "results/sensitivity_results.csv",
 ) -> pd.DataFrame:
     """Run the full sensitivity grid; write per-run records to CSV.
-
     Each row is one (algorithm, beta, n, seed) cell.
     """
     records = []
@@ -67,7 +65,7 @@ def run_sensitivity_grid(
     pbar = tqdm(total=total, desc="Sensitivity grid")
 
     for beta in betas:
-        # NOTE: paper uses NEGATIVE beta; here `beta` is the magnitude. We
+        # NOTE: Here `beta` is the magnitude. We
         # generate data with `-beta` so the planted edge points the right way.
         beta_signed = -beta
         truth = GROUND_TRUTH_EDGES_BIASED if beta != 0.0 else GROUND_TRUTH_EDGES_UNBIASED
@@ -130,7 +128,7 @@ def plot_sensitivity_heatmap(
     summary: pd.DataFrame,
     save_path: str = "figures/sensitivity_grid.png",
 ):
-    """Recreate Figure 2 from the paper: detection rate as bar height, SHD as annotation."""
+    """Detection rate as bar height, SHD as annotation."""
     import matplotlib.pyplot as plt
 
     algorithms = list(ALGORITHMS.keys())

@@ -1,13 +1,13 @@
 """
 main_compas.py
 ==============
-Reproduce Study 2 (Section VI): COMPAS recidivism analysis.
+Study 2: COMPAS recidivism analysis.
 
 Pipeline:
   1. Load ProPublica COMPAS two-year CSV (downloads on first run, then caches).
   2. Apply ProPublica's standard preprocessing filters; restrict to
      African-American + Caucasian so the binary Race=1/0 encoding matches
-     the paper's published comparison and the ProPublica article.
+     the ProPublica article.
   3. Compute baseline correlation-based fairness metrics, including BOTH the
      descriptive mean-Score ratio AND the proper selection-rate DIR (the one
      that can legitimately be compared against the 4/5-rule threshold).
@@ -19,21 +19,6 @@ Pipeline:
   7. Compute backdoor-adjusted ATE with progressive control sets.
   8. Build the correlation-vs-causal comparison figure with corrected labels.
 
-Numbers produced by this pipeline (default AA + Caucasian filter):
-  n_total                    = 5,278
-  n_AA                       = 3,175
-  n_Caucasian                = 2,103
-  mean Score (AA)            = 5.28
-  mean Score (Caucasian)     = 3.64
-  two-year recid rate (AA)   = 52.3%
-  two-year recid rate (Cau)  = 39.1%
-  DIR_score_selection_rate   = 1.74   (proper DIR; comparable to 0.80)
-  mean_score_ratio           = 1.45   (descriptive only; NOT a real DIR)
-  DIR_recidivism             = 1.34   (rate ratio; legitimate DIR)
-
-ProPublica contingency-table numbers on n=7,214 (printed for reference):
-  African-American   FP=44.85%, FN=27.99%
-  Caucasian          FP=23.45%, FN=47.72%
 """
 from __future__ import annotations
 
@@ -115,10 +100,8 @@ def main():
           f"(filtered to African-American + Caucasian)")
 
     # ---------------------------------------------------------------------
-    # 2. Per-race breakdown (Table III style) on the standard
-    #    ProPublica-filtered sample BEFORE the AA/Cau restriction. This
-    #    gives reviewers the same per-race rate table they see in
-    #    ProPublica + comparison papers.
+    # 2. Per-race breakdown on the standard
+    #    ProPublica-filtered sample BEFORE the AA/Cau restriction.
     # ---------------------------------------------------------------------
     print("\n=== Per-race breakdown (Table III; ProPublica filters, all races) ===")
     print(per_race_breakdown(raw).to_string(index=False))
@@ -151,6 +134,27 @@ def main():
               f"PPV={c['PPV']:.2f}  NPV={c['NPV']:.2f}")
 
     # ---------------------------------------------------------------------
+    # R² of each variable as a function of all others.
+    # This documents the empirical basis for the GRaSP failure-mechanism the COMPAS Score has the highest R² (most
+    # explained by other features), which GRaSP's BIC residual-variance
+    # ordering misinterprets as exogeneity.
+    # ---------------------------------------------------------------------
+    print("\n=== R² of each variable regressed on all others ===")
+    print("(Highest R² = most endogenous; GRaSP misclassifies this as exogenous)")
+    from sklearn.linear_model import LinearRegression
+    vars_ = ["Race", "Sex", "Age", "JuvFelony", "JuvMisd",
+             "Priors", "ChargeDegree", "Score", "Recidivism"]
+    r2_rows = []
+    for target in vars_:
+        predictors = [v for v in vars_ if v != target]
+        r2 = LinearRegression().fit(
+            df[predictors].astype(float), df[target].astype(float)
+        ).score(df[predictors].astype(float), df[target].astype(float))
+        r2_rows.append({"variable": target, "R2": round(r2, 4)})
+    r2_df = pd.DataFrame(r2_rows).sort_values("R2", ascending=False)
+    print(r2_df.to_string(index=False))
+    r2_df.to_csv("results/compas_r2.csv", index=False)
+    # ---------------------------------------------------------------------
     # 5. Causal discovery
     # ---------------------------------------------------------------------
     print("\n=== Running causal discovery on COMPAS ===")
@@ -165,7 +169,7 @@ def main():
         print(res.summary())
         print()
 
-    # Tabulate Race->Score and Race->Priors detections (Table IV)
+    # Tabulate Race->Score and Race->Priors detections
     rows = []
     for name, res in results.items():
         if res is None:
@@ -230,7 +234,7 @@ def main():
     plt.close("all")
 
     # ---------------------------------------------------------------------
-    # 7. Backdoor-adjustment ATE (Equations 5-8 in the paper)
+    # 7. Backdoor-adjustment ATE
     # ---------------------------------------------------------------------
     print("\n=== Backdoor ATE: Race -> Score ===")
     print("Formula: ATE = E_Z[ E[Y|T=1,Z] - E[Y|T=0,Z] ]")
@@ -271,13 +275,6 @@ def main():
 
     # -----------------------------------------------------------------
     # Correlation vs causal comparison figure
-    # -----------------------------------------------------------------
-    # The LEFT panel shows fairness metrics that "detect that bias exists".
-    # We show:
-    #   (a) the proper selection-rate DIR (legitimately compared to 0.80);
-    #   (b) the recidivism DIR (rate ratio);
-    #   (c) the mean-Score ratio with an asterisk in the label so readers
-    #       see it's the *descriptive* version, not a real DIR.
     # -----------------------------------------------------------------
     print("\n=== Generating correlation-vs-causal comparison figure ===")
     correlation_metrics = {

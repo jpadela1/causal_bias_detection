@@ -4,7 +4,7 @@ visualization.py  —  Graphviz-based causal graph renderer
 
 BACKEND CHANGE: matplotlib FancyArrowPatch → Graphviz dot
 ----------------------------------------------------------
-The previous matplotlib implementation required manual computation of
+The matplotlib implementation required manual computation of
 Bézier arc midpoints to position edge labels.  That math is fragile and
 produced labels that drifted away from their arrows on long curved edges.
 
@@ -381,7 +381,7 @@ def _add_legend_cluster(
             _leg_row("lb_s", "lb_t", "Bidirected (latent confounder)",
                      COLOR_BIDIRECTED, "solid", "both", "1.8")
         if has_flagged:
-            _leg_row("lf_s", "lf_t", "Flagged edge (under audit)",
+            _leg_row("lf_s", "lf_t", "Flagged edge (for review)",
                      COLOR_FLAGGED, "dashed", "forward", "2.4")
 
         for role in roles_present:
@@ -577,7 +577,7 @@ def plot_discovery_result(
                 edge_handles.append(
                     Line2D([0],[0], color=COLOR_FLAGGED, lw=2.2,
                            linestyle="--", marker=">", markersize=8,
-                           label="Flagged edge (under audit)"))
+                           label="Flagged edge (for review)"))
             node_handles = [
                 mpatches.Patch(facecolor=NODE_ROLE_COLORS[r], edgecolor="black",
                                label=ROLE_LABELS[r])
@@ -690,7 +690,7 @@ def plot_grid(
             Line2D([0],[0], color=COLOR_BIDIRECTED, lw=1.8,
                    marker=">", markersize=8, label="Bidirected (latent confounder)"),
             Line2D([0],[0], color=COLOR_FLAGGED,    lw=2.2, linestyle="--",
-                   marker=">", markersize=8, label="Flagged edge (under audit)"),
+                   marker=">", markersize=8, label="Flagged edge (for review)"),
         ]
         node_handles = [
             mpatches.Patch(facecolor=NODE_ROLE_COLORS[r], edgecolor="black",
