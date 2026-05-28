@@ -1,8 +1,8 @@
 # Causal-Discovery Audit for Algorithmic Bias
 
 Python/PyCharm reproduction of the paper *"When Correlation Isn't Enough: Using Causal Inference for Algorithm Bias Detection"* Implements all six causal discovery algorithms, the
-synthetic loan-approval study, the sensitivity sweep, the COMPAS
-application, and Pearl-style backdoor ATE estimation.
+synthetic loan-approval study, the sensitivity sweep, the COMPAS application, and Pearl-style backdoor ATE estimation. At the end, it provides an infographic bias detection
+pipeline and a 5-step protocol or method and summarizes the multiple experiements.
 
 ## Project layout
 
@@ -157,6 +157,6 @@ audits of algorithmic-score systems.
 - All RNG seeds are explicit. Synthetic-data seed defaults to 42 to
   match the paper.
 - LiNGAM coefficients should match the paper to within ≈0.03 on the
-  synthetic data (paper reports β̂ = -0.179 vs planted -0.15 at
-  n = 1000) and to four decimals on COMPAS (β̂ = +0.134) once the
+  synthetic data (paper reports β̂ = -0.1074 vs planted -0.15 at
+  n = 5000) and to four decimals on COMPAS (β̂ = +0.5167) once the
   ProPublica filters yield the same n ≈ 9,380.
