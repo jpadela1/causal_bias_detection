@@ -1,8 +1,6 @@
 # Causal-Discovery Audit for Algorithmic Bias
 
-Python/PyCharm reproduction of the paper *"From Correlation to Mechanism: A
-Causal-Discovery Protocol for Auditing Algorithmic Bias in High-Stakes
-Decision Systems."* Implements all six causal discovery algorithms, the
+Python/PyCharm reproduction of the paper *"When Correlation Isn't Enough: Using Causal Inference for Algorithm Bias Detection"* Implements all six causal discovery algorithms, the
 synthetic loan-approval study, the sensitivity sweep, the COMPAS
 application, and Pearl-style backdoor ATE estimation.
 
