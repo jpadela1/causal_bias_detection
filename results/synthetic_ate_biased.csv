@@ -1,6 +1,6 @@
 stage,ATE,SE,n_controls,controls
 no controls,-0.2967,0.0242,0,(none)
-#NAME?,-0.1691,0.0191,1,Income
-#NAME?,-0.1075,0.0166,2,"Income, CreditSc"
-#NAME?,-0.1088,0.0181,3,"ZIP, Income, CreditSc"
-#NAME?,-0.1086,0.0182,5,"Gender, Education, ZIP, Income, CreditSc"
++ Income,-0.1691,0.0191,1,Income
+"+ Income, CreditSc",-0.1075,0.0166,2,"Income, CreditSc"
+"+ ZIP, Income, CreditSc",-0.1088,0.0181,3,"ZIP, Income, CreditSc"
+"+ Gender, Education, ZIP, Income, CreditSc",-0.1086,0.0182,5,"Gender, Education, ZIP, Income, CreditSc"

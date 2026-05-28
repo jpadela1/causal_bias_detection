@@ -8,6 +8,6 @@ biased,DirectLiNGAM,YES,1,-0.1074,False
 unbiased,PC,no,7,,False
 unbiased,FCI,no,8,,True
 unbiased,GES,no,3,,False
-unbiased,GRaSP,no,7,,False
+unbiased,GRaSP,no,3,,False
 unbiased,ICA-LiNGAM,no,1,0.0,False
 unbiased,DirectLiNGAM,no,1,0.0,False

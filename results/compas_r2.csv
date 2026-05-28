@@ -1,0 +1,10 @@
+variable,R2
+Score,0.4451
+Priors,0.3893
+Age,0.3146
+Recidivism,0.1713
+Race,0.1107
+JuvMisd,0.0998
+JuvFelony,0.0512
+ChargeDegree,0.0483
+Sex,0.0269
