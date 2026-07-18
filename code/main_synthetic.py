@@ -109,10 +109,15 @@ def main():
 
     print(f"\nDataset A (biased)   shape: {biased.shape}")
     print(f"Dataset B (unbiased) shape: {unbiased.shape}")
-    print(f"Loan approval rate by Race (biased)  : "
+    print(f"Loan approval rate by Race (biased) is also the mean standardized loan score : "
           f"{biased.groupby('Race')['Loan'].mean().to_dict()}")
-    print(f"Loan approval rate by Race (unbiased): "
+    print(f"Loan approval rate by Race (unbiased) is also the mean standardized loan score: "
           f"{unbiased.groupby('Race')['Loan'].mean().to_dict()}")
+
+#testing
+    gap = biased.loc[biased["Race"] == 1, "Loan"].mean() - biased.loc[biased["Race"] == 0, "Loan"].mean()
+    print(f"Standardized mean difference (Race=1 minus Race=0): {gap:+.4f}")
+
 
     # ----------------------------------------------------------------------
     # Run all algorithms
