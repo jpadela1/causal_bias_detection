@@ -34,18 +34,18 @@ external data is needed for Study 1.
 
 <!-- PLACEHOLDER: adjust filenames to match your repo exactly -->
 
-| File | Purpose |
-|---|---|
-| `main_synthetic.py` <!-- PLACEHOLDER: your Study 1 runner's actual name --> | Study 1: generates the paired biased/unbiased synthetic datasets (planted Race→Loan, β = −0.15), runs all six algorithms, computes SHD/detection and the backdoor ATE ladder (Table II, Figs. 1 and 3) |
-| `sensitivity_analysis.py` <!-- PLACEHOLDER: your 480-run grid script --> | Study 1 sensitivity grid: β ∈ {0.00–0.25} × n ∈ {1k, 5k, 10k, 50k} × 20 seeds = 480 runs (Fig. 2) |
-| `main_compas.py` | Study 2 pipeline: loads/filters COMPAS (n = 5,278), baseline disparity metrics, per-variable R² table, all six discovery algorithms, staged direct-effect estimation, DAG figures (Figs. 4–5, Tables III–IV) |
-| `compas_analysis.py` | COMPAS loading, ProPublica preprocessing filters, disparity metrics |
-| `causal_discovery.py` | Wrappers for PC, FCI, GES, GRaSP, ICA-LiNGAM, DirectLiNGAM (incl. edge-convention auto-detection and DirectLiNGAM prior-knowledge constraints) |
-| `ate_estimation.py` | Staged covariate-adjustment estimators (total effect → adjusted direct effect) |
-| `bootstrap_ci.py` | 1,000-resample nonparametric bootstrap 95% CIs for the adjusted DE and both LiNGAM β̂ estimates (Fig. 6, Step 5) |
-| `evalue_check.py` | E-value computation (VanderWeele & Ding continuous-outcome approximation): E ≈ 1.65 point estimate, ≈ 1.52 at the lower CI bound |
-| `run_dirlingam_compas.py` | Robustness run: DirectLiNGAM on COMPAS **without** background knowledge (β̂ = +0.4834; Section VI-B) |
-| `visualization.py` | Shared DAG plotting (fixed node layout, flagged-edge highlighting) |
+| File                                                                 | Purpose |
+|----------------------------------------------------------------------|---|
+| `main_synthetic.py`                                                  | Study 1: generates the paired biased/unbiased synthetic datasets (planted Race→Loan, β = −0.15), runs all six algorithms, computes SHD/detection and the backdoor ATE ladder (Table II, Figs. 1 and 3) |
+| `main_sensitivity.py`  | Study 1 sensitivity grid: β ∈ {0.00–0.25} × n ∈ {1k, 5k, 10k, 50k} × 20 seeds = 480 runs (Fig. 2) |
+| `main_compas.py`                                                     | Study 2 pipeline: loads/filters COMPAS (n = 5,278), baseline disparity metrics, per-variable R² table, all six discovery algorithms, staged direct-effect estimation, DAG figures (Figs. 4–5, Tables III–IV) |
+| `compas_analysis.py`                                                 | COMPAS loading, ProPublica preprocessing filters, disparity metrics |
+| `causal_discovery.py`                                                | Wrappers for PC, FCI, GES, GRaSP, ICA-LiNGAM, DirectLiNGAM (incl. edge-convention auto-detection and DirectLiNGAM prior-knowledge constraints) |
+| `ate_estimation.py`                                                  | Staged covariate-adjustment estimators (total effect → adjusted direct effect) |
+| `bootstrap_ci.py`                                                    | 1,000-resample nonparametric bootstrap 95% CIs for the adjusted DE and both LiNGAM β̂ estimates (Fig. 6, Step 5) |
+| `evalue_check.py`                                                    | E-value computation (VanderWeele & Ding continuous-outcome approximation): E ≈ 1.65 point estimate, ≈ 1.52 at the lower CI bound |
+| `run_dirlingam_compas.py`                                            | Robustness run: DirectLiNGAM on COMPAS **without** background knowledge (β̂ = +0.4834; Section VI-B) |
+| `visualization.py`                                                   | Shared DAG plotting (fixed node layout, flagged-edge highlighting) |
 
 Outputs are written to `results/` (CSV tables, including `compas_r2.csv`,
 `compas_summary.csv`, `compas_ate.csv`, `compas_bootstrap_ci.csv`) and
@@ -55,10 +55,10 @@ Outputs are written to `results/` (CSV tables, including `compas_r2.csv`,
 
 ```bash
 # Study 1: synthetic benchmark (Table II, Figs. 1, 3)
-python main_synthetic.py            # PLACEHOLDER: actual name
+python main_synthetic.py            # Generates the synthetic datasets
 
 # Study 1: sensitivity grid, 480 runs (Fig. 2) — longest step
-python sensitivity_analysis.py      # PLACEHOLDER: actual name
+python sensitivity_analysis.py      # Runs the sensitivity analysis on the synthetic datasets
 
 # Study 2: COMPAS pipeline (Tables III-IV, Figs. 4-5)
 python main_compas.py
@@ -89,7 +89,7 @@ bootstrap CIs, E-values) reproduce exactly.
 
 ## License
 
-<!-- PLACEHOLDER: e.g., MIT. Add a LICENSE file if your repo host requires one. -->
+*License to be added upon publication.*
 
 *Author details are omitted for double-blind review and will be added upon
 publication.*
