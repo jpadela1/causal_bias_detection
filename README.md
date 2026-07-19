@@ -58,7 +58,7 @@ Outputs are written to `results/` (CSV tables, including `compas_r2.csv`,
 python main_synthetic.py            # Generates the synthetic datasets
 
 # Study 1: sensitivity grid, 480 runs (Fig. 2) — longest step
-python sensitivity_analysis.py      # Runs the sensitivity analysis on the synthetic datasets
+python main_sensitivity.py      # Runs the sensitivity analysis on the synthetic datasets
 
 # Study 2: COMPAS pipeline (Tables III-IV, Figs. 4-5)
 python main_compas.py
