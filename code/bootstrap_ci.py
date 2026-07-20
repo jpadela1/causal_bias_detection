@@ -3,7 +3,7 @@ bootstrap_ci.py
 ===============
 Compute bootstrap 95% confidence intervals for the three COMPAS estimates
 that anchor the "convergent evidence" claim.
-    1. Backdoor-adjusted ATE (OLS, Race -> Score with full controls)
+    1. Backdoor-adjusted DE (OLS, Race -> Score with full controls)
     2. DirectLiNGAM beta-hat (Race -> Score edge coefficient)
     3. ICA-LiNGAM beta-hat (Race -> Score edge coefficient)
 
@@ -65,7 +65,7 @@ def estimate_directlingam_beta(df: pd.DataFrame) -> float:
     """DirectLiNGAM coefficient on the Race -> Score edge.
 
     Returns the entry of LiNGAM's adjacency matrix corresponding to the
-    Race -> Score edge in standardized variables. If the algorithm orients
+    Race -> Score edge. If the algorithm orients
     the edge the wrong way or omits it, returns 0.0 so the bootstrap
     distribution captures that as a real possibility (rather than
     silently dropping such iterations and shrinking the CI).
@@ -88,7 +88,7 @@ def estimate_icalingam_beta(df: pd.DataFrame) -> float:
     vars_ = ["Race", "Sex", "Age", "JuvFelony", "JuvMisd",
              "Priors", "ChargeDegree", "Score", "Recidivism"]
     X = df[vars_].astype(float).values
-    model = ICALiNGAM()
+    model = ICALiNGAM(random_state=BASE_SEED)
     model.fit(X)
     race_idx, score_idx = vars_.index("Race"), vars_.index("Score")
     return float(model.adjacency_matrix_[score_idx, race_idx])
@@ -162,12 +162,12 @@ def main():
     pt_ate = estimate_ate(df)
     pt_dl  = estimate_directlingam_beta(df)
     pt_ica = estimate_icalingam_beta(df)
-    print(f"  ATE (full controls):      {pt_ate:+.4f}")
+    print(f"  DE (full controls):      {pt_ate:+.4f}")
     print(f"  DirectLiNGAM beta_hat:    {pt_dl:+.4f}")
     print(f"  ICA-LiNGAM beta_hat:      {pt_ica:+.4f}")
 
     # Bootstrap each estimator
-    print(f"\n--- Bootstrapping ATE ({N_BOOT} resamples) ---")
+    print(f"\n--- Bootstrapping DE ({N_BOOT} resamples) ---")
     boot_ate = bootstrap_one(df, estimate_ate,
                              N_BOOT, BASE_SEED + 1, "ATE")
 
@@ -181,7 +181,7 @@ def main():
 
     # Summarize
     rows = [
-        summarize("ATE (full controls)",    pt_ate, boot_ate),
+        summarize("DE (full controls)",    pt_ate, boot_ate),
         summarize("DirectLiNGAM β̂ Race→Score", pt_dl,  boot_dl),
         summarize("ICA-LiNGAM β̂ Race→Score",   pt_ica, boot_ica),
     ]
@@ -196,7 +196,7 @@ def main():
     # Convergent evidence check: do the three CIs overlap?
     print("\n--- Convergent evidence check ---")
     intervals = [
-        ("ATE",          rows[0]["ci_lo"], rows[0]["ci_hi"]),
+        ("DE",          rows[0]["ci_lo"], rows[0]["ci_hi"]),
         ("DirectLiNGAM", rows[1]["ci_lo"], rows[1]["ci_hi"]),
         ("ICA-LiNGAM",   rows[2]["ci_lo"], rows[2]["ci_hi"]),
     ]

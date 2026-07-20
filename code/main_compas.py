@@ -236,9 +236,9 @@ def main():
     # ---------------------------------------------------------------------
     # 7. Backdoor-adjustment ATE
     # ---------------------------------------------------------------------
-    print("\n=== Backdoor ATE: Race -> Score ===")
-    print("Formula: ATE = E_Z[ E[Y|T=1,Z] - E[Y|T=0,Z] ]")
-    print("Under linearity: ATE_hat = OLS coefficient on Race after controlling for Z")
+    print("\n=== Backdoor DE: Race -> Score ===")
+    print("Formula: DE = E_Z[ E[Y|T=1,Z] - E[Y|T=0,Z] ]")
+    print("Under linearity: DE_hat = OLS coefficient on Race after controlling for Z")
 
     stages = [
         ("no controls",           []),
@@ -262,8 +262,8 @@ def main():
     print(f"  Selection-rate DIR (proper)       = {base['DIR_score_selection_rate']:.4f}")
     print(f"  DIR_recidivism (rate ratio)       = {base['DIR_recidivism']:.4f}")
     print(f"  Statistical parity (Score)        = {base['stat_parity_score']:+.4f}")
-    print(f"  Raw ATE (no controls)             = {ate_table.iloc[0]['ATE']:+.4f}")
-    print(f"  ATE (full controls)               = {ate_full:+.4f}")
+    print(f"  Raw DE (no controls)             = {ate_table.iloc[0]['ATE']:+.4f}")
+    print(f"  DE (full controls)               = {ate_full:+.4f}")
 
     beta_dl = beta_ica = None
     if results.get("DirectLiNGAM") is not None:
@@ -286,8 +286,8 @@ def main():
             base["mean_score_ratio"],
     }
     causal_estimates = {
-        "ATE Race\u2192Score\n(no controls)":   ate_table.iloc[0]["ATE"],
-        "ATE Race\u2192Score\n(full controls)": ate_full,
+        "DE Race\u2192Score\n(no controls)":   ate_table.iloc[0]["ATE"],
+        "DE Race\u2192Score\n(full controls)": ate_full,
     }
     if beta_dl is not None:
         causal_estimates["DirectLiNGAM \u03b2\nRace\u2192Score"] = beta_dl
