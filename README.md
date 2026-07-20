@@ -46,7 +46,7 @@ external data is needed for Study 1.
 | `evalue_check.py`                                                    | E-value computation (VanderWeele & Ding continuous-outcome approximation): E ≈ 1.65 point estimate, ≈ 1.52 at the lower CI bound |
 | `run_dirlingam_compas.py`                                            | Robustness run: DirectLiNGAM on COMPAS **without** background knowledge (β̂ = +0.4834; Section VI-B) |
 | `visualization.py`                                                   | Shared DAG plotting (fixed node layout, flagged-edge highlighting) |
-| 'compas_grasp_bic.py'                                                | Quantifies the BIC preference for GRaSP's temporarily impossible COMPAS structure over the corrected orientation (Section VII).
+| `compas_grasp_bic.py`                                                | Quantifies the BIC preference for GRaSP's temporarily impossible COMPAS structure over the corrected orientation (Section VII).
 
 Outputs are written to `results/` (CSV tables, including `compas_r2.csv`,
 `compas_summary.csv`, `compas_ate.csv`, `compas_bootstrap_ci.csv`) and
