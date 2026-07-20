@@ -23,6 +23,8 @@ import os
 
 import pandas as pd
 import matplotlib
+import random          # Add import to generate random seed
+
 
 matplotlib.use("Agg")  # headless-safe
 import matplotlib.pyplot as plt
@@ -121,6 +123,8 @@ def main():
 
     # ----------------------------------------------------------------------
     # Run all algorithms
+    # random.seed(42)                      # <-- added for reproducibility testing
+    # results_biased = run_all(biased) then unbiased in this order seed first
     # ----------------------------------------------------------------------
     print("\n--- Running causal discovery on Dataset A (biased) ---")
     results_biased = run_all(biased)

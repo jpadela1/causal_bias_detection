@@ -77,7 +77,10 @@ def run_sensitivity_grid(
                 for alg_name, fn in ALGORITHMS.items():
                     t0 = time.perf_counter()
                     try:
-                        res: DiscoveryResult = fn(data)
+                        #res: DiscoveryResult = fn(data) # fix for GRaSP seeding and algorithm stability
+                        res: DiscoveryResult = (
+                            fn(data, seed=seed) if alg_name == "GRaSP" else fn(data)
+                        )
                         elapsed = time.perf_counter() - t0
                         detected = res.has_directed_edge("Race", "Loan")
                         shd = structural_hamming_distance(res, truth)

@@ -28,6 +28,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import random
 
 # Apply NumPy 2.x compatibility shim BEFORE any causal-learn module is
 # imported. causal-learn's GES/GRaSP score functions call np.mat (removed
@@ -330,10 +331,10 @@ def run_ges(data: pd.DataFrame) -> DiscoveryResult:
         raw=res,
     )
 
-
-def run_grasp(data: pd.DataFrame) -> DiscoveryResult:
+def run_grasp(data: pd.DataFrame, seed: int = 42) -> DiscoveryResult:
     _, _, _, cl_grasp, _ = _import_causal_learn()
     variables = list(data.columns)
+    random.seed(seed)  # pin GRaSP's stdlib-random initialization
     G = cl_grasp(data.values, score_func="local_score_BIC")
     graph_matrix = G.graph if hasattr(G, "graph") else G
     directed, undirected, bidirected = _extract_edges_from_graph(graph_matrix, variables)
@@ -600,7 +601,7 @@ def structural_hamming_distance(
     return shd
 
 #Toggle with n=1000 and GRaSP fails with an SHD of 16 on the biased dataset
-# At n=5000, GRaSP succeeds with an SHD of 3 on the biased, but the unbiased is high at 11.
+# At n=5000, GRaSP succeeds with an SHD of 8 on the biased, the unbiased is 7.
 #LiNGAM's are the same at both. GES has spurious edges.
 if __name__ == "__main__":
     from synthetic_data import generate_paired_datasets
