@@ -71,9 +71,7 @@ python evalue_check.py
 python run_dirlingam_compas.py
 ```
 
-All randomness is seeded; the numbers reported in the paper (e.g., adjusted
-DE = +0.5255, DirectLiNGAM β̂ = +0.5167, Δ = 0.0088 decile-score points,
-bootstrap CIs, E-values) reproduce exactly.
+The synthetic data and all NumPy-based estimation are controlled by the data seeds in the scripts. GRaSP's permutation search is randomly initialized via Python's standard-library random module, which NumPy seeding does not control; run_grasp() therefore pins random.seed internally (default 42), and the sensitivity grid passes each repetition's seed through. With these seeds, every number in the paper — including Table II's GRaSP row — reproduces exactly from the commands above. 
 
 ## Notes on methodology choices encoded here
 
