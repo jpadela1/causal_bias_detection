@@ -2,12 +2,12 @@ dataset,algorithm,Race->Loan,SHD,beta_hat,lat_conf
 biased,PC,no,8,,False
 biased,FCI,no,9,,True
 biased,GES,no,13,,False
-biased,GRaSP,YES,6,,False
+biased,GRaSP,no,8,,False
 biased,ICA-LiNGAM,YES,1,-0.1074,False
 biased,DirectLiNGAM,YES,1,-0.1074,False
 unbiased,PC,no,7,,False
 unbiased,FCI,no,8,,True
 unbiased,GES,no,3,,False
-unbiased,GRaSP,no,9,,False
+unbiased,GRaSP,no,7,,False
 unbiased,ICA-LiNGAM,no,1,0.0,False
 unbiased,DirectLiNGAM,no,1,0.0,False
