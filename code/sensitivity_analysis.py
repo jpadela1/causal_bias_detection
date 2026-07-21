@@ -15,6 +15,11 @@ For each (beta, n, seed) cell we record:
 Note: n=50000 with 20 seeds and 6 algorithms takes a while; the script
 exposes `sample_sizes`, `betas`, and `n_repeats` so you can shrink the grid
 during development.
+
+Detection convention: `detected_race_to_loan` always records whether the
+Race -> Loan edge is PRESENT in the recovered graph. At beta = 0.00 the edge
+is absent from the ground truth, so the recorded rate at that column is the
+false-positive rate (lower is better), not a "correctly absent" rate.
 """
 from __future__ import annotations
 
@@ -48,7 +53,8 @@ GROUND_TRUTH_EDGES_BIASED = [
     ("CreditSc", "Loan"),
 ]
 GROUND_TRUTH_EDGES_UNBIASED = [e for e in GROUND_TRUTH_EDGES_BIASED if e != ("Race", "Loan")]
-
+# Main experimental setting reported in Table II; highlighted in the figure.
+MAIN_BETA = 0.15
 
 def run_sensitivity_grid(
     betas: List[float] = (0.00, 0.05, 0.10, 0.15, 0.20, 0.25),
@@ -126,6 +132,20 @@ def aggregate_grid(df: pd.DataFrame) -> pd.DataFrame:
     summary["detection_rate"] = summary["detection_rate"].round(2)
     return summary
 
+def _fmt_shd(mean: float, std: float) -> str:
+    """One decimal when either component is sub-integer, else integer.
+
+    '.0f' on (0.35, 0.49) renders '0±0', which reads as perfect structural
+    recovery with zero variance. Neither holds: at n=5,000 the LiNGAM cells
+    have 13 of 20 seeds at SHD 0 and 7 at SHD 1. Printing one decimal keeps
+    that spread visible and consistent with Table II, where the pinned-seed
+    run reports SHD = 1.
+    """
+    if pd.isna(mean) or pd.isna(std):
+        return "n/a"
+    if mean < 1 or std < 1:
+        return f"{mean:.1f}±{std:.1f}"
+    return f"{mean:.0f}±{std:.0f}"
 
 def plot_sensitivity_heatmap(
     summary: pd.DataFrame,
@@ -152,47 +172,70 @@ def plot_sensitivity_heatmap(
             ax = axes[r, c]
             sub = summary[(summary["algorithm"] == alg) & (summary["n"] == n)].sort_values("beta")
             heights = sub["detection_rate"].values
-            colors = ["#2ca02c" if h >= 0.95 else "#7fbf7b" if h >= 0.5 else "#d9d9d9"
-                      for h in heights]
-            ax.bar(range(len(sub)), heights, color=colors, edgecolor="black", linewidth=0.5)
+
+            bars = ax.bar(
+                range(len(sub)), heights,
+                width=0.72, color="#2e7d4f",
+                edgecolor="#1b1b1b", linewidth=0.4,
+            )
+            # colour intensity tracks detection rate; main setting gets a red outline
+            for bar, h, b in zip(bars, heights, sub["beta"]):
+                bar.set_alpha(0.25 + 0.75 * float(h))
+                if abs(float(b) - MAIN_BETA) < 1e-9:
+                    bar.set_edgecolor("#b00020")
+                    bar.set_linewidth(1.3)
+
+            # annotation sits above its own bar and runs vertically, so labels
+            # no longer collide along a shared baseline
             for i, (_, row) in enumerate(sub.iterrows()):
                 ax.text(
-                    i, 0.05, f"{row['mean_shd']:.0f}±{row['std_shd']:.0f}",
-                    ha="center", va="bottom", fontsize=6,
+                    i, min(float(row["detection_rate"]) + 0.04, 0.72),
+                    _fmt_shd(row["mean_shd"], row["std_shd"]),
+                    ha="center", va="bottom", rotation=90,
+                    fontsize=6.4, color="#222222",
                 )
-            ax.set_ylim(0, 1.05)
+
+            ax.set_ylim(0, 1.0)
             ax.set_xticks(range(len(sub)))
-            ax.set_xticklabels([f"{b:.2f}" for b in sub["beta"]], fontsize=6, rotation=45)
+            ax.set_xticklabels([f"{b:.2f}" for b in sub["beta"]], fontsize=6.5, rotation=90)
+            ax.tick_params(axis="y", labelsize=7)
+            ax.grid(axis="y", linestyle=":", linewidth=0.5, alpha=0.55)
+            ax.set_axisbelow(True)
+
             if r == 0:
-                ax.set_title(alg, fontsize=9, fontweight="bold")
+                ax.set_title(alg, fontsize=10, fontweight="bold", pad=8)
             if c == 0:
-                ax.set_ylabel(f"n={n:,}\n\nDetection rate", fontsize=8)
+                ax.set_ylabel(f"n={n:,}\nDetection rate", fontsize=8.5)
             if r == len(sample_sizes) - 1:
-                ax.set_xlabel("β", fontsize=8)
+                ax.set_xlabel("β", fontsize=9)
 
     fig.suptitle(
-        "Sensitivity Analysis: Race→Loan Detection Rate and SHD\n"
-        "(bar height = detection rate; annotation = mean SHD ± std)",
-        fontsize=11, fontweight="bold",
+        "Sensitivity Analysis: Race→Loan Detection Rate and SHD",
+        fontsize=13, fontweight="bold", y=0.985,
     )
-    plt.tight_layout()
+    fig.text(
+        0.5, 0.955,
+        "bar height = detection rate; annotation = mean SHD ± std over "
+        "20 seeds (one decimal where mean or std < 1); "
+        "red outline = main setting β = 0.15",
+        ha="center", fontsize=8.5, color="#444444",
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.945])
+    os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     from visualization import save_figure_dual_format
     save_figure_dual_format(fig, save_path)
     plt.close(fig)
 
-
 if __name__ == "__main__":
-    # Small demo grid; expand betas/sample_sizes/n_repeats for the full paper grid.
-    #   betas: List[float] = (0.00, 0.05, 0.10, 0.15, 0.20, 0.25),
-    # sample_sizes: List[int] = (1000, 5000, 10000, 50000),
     df = run_sensitivity_grid(
         betas=[0.00, 0.05, 0.10, 0.15, 0.20, 0.25],
         sample_sizes=[1000, 5000, 10000, 50000],
-        n_repeats=10,
-        out_csv="results/sensitivity_results_demo.csv",
+        n_repeats=20,
+        base_seed=1000,
+        out_csv="results/sensitivity_results.csv",
     )
     summary = aggregate_grid(df)
     print("\nAggregated summary:")
     print(summary.to_string(index=False))
-    summary.to_csv("results/sensitivity_summary_demo.csv", index=False)
-    plot_sensitivity_heatmap(summary, save_path="figures/sensitivity_grid_demo.png")
+    summary.to_csv("results/sensitivity_summary.csv", index=False)
+    plot_sensitivity_heatmap(summary, save_path="figures/sensitivity_grid.png")

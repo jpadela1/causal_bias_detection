@@ -3,10 +3,9 @@ main_sensitivity.py
 ===================
 Reproduce Section V (Sensitivity Analysis) of the paper.
 
-By default this runs a SMALL grid (faster). Edit the lists below to expand to
-the full paper grid:
+The full paper grid:
     betas        = [0.00, 0.05, 0.10, 0.15, 0.20, 0.25]
-    sample_sizes = [1000, 50000]
+    sample_sizes = [1000, 5000, 10000, 50000]
     n_repeats    = 20
 WARNING: the full grid runs hundreds of LiNGAM/GES fits and can take >1 hour
 on a laptop.
@@ -32,7 +31,7 @@ from sensitivity_analysis import (
 def main():
     # ---- Adjust grid here ------------------------------------------------
     betas = [0.00, 0.05, 0.10, 0.15, 0.20, 0.25]
-    sample_sizes = [1000, 5000, 10000, 50000]   # add 50000 for full paper grid (slow!)
+    sample_sizes = [1000, 5000, 10000, 50000]   # 50000 for full paper grid (slow!)
     n_repeats = 20                  # paper uses 20
     # ----------------------------------------------------------------------
 
