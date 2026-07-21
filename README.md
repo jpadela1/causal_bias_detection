@@ -95,7 +95,7 @@ E-values reproduce exactly from the commands above, as does Table II — whose
 GRaSP row reports the pinned-initialization run, consistent with the table
 footnote in the paper. Because GRaSP's search is randomly initialized, any
 single-run result is one draw from the distribution characterized in Fig. 2;
-the 60% detection rate reported for (β = 0.15, n = 5,000) in Section V
+the 70% detection rate (14/20) reported for (β = 0.15, n = 5,000) in Section V
 summarizes that distribution rather than describing any one run.
 
 ## Notes on methodology choices encoded here
