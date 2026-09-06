@@ -47,8 +47,19 @@ except ImportError:
     _GV_AVAILABLE = False
 
 # matplotlib — used only for plot_grid panel composition
+#import matplotlib
+#matplotlib.use("Agg")
+# --------------------------------------------------------------------------
+# Font configuration MUST happen before pyplot is imported.
+# --------------------------------------------------------------------------
 import matplotlib
 matplotlib.use("Agg")
+matplotlib.rcParams["pdf.fonttype"] = 42      # 42 = TrueType. 3 = Type 3 = rejected.
+matplotlib.rcParams["ps.fonttype"] = 42
+matplotlib.rcParams["text.usetex"] = False    # keep the script self-contained
+matplotlib.rcParams["font.family"] = "sans-serif"
+matplotlib.rcParams["axes.unicode_minus"] = False
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D

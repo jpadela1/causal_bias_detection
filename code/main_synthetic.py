@@ -10,7 +10,7 @@ Run this first. It will:
   1. Generate Dataset A (biased, beta=-0.15) and Dataset B (unbiased, beta=0).
   2. Run all six causal discovery algorithms on each dataset.
   3. Print a Table II-style summary (SHD, Race->Loan detection, beta_hat).
-  4. Save individual + grid DAG figures to figures/.
+  4. Save individual + grid DAG figures to figures/. This is using visualization.py (not make_fig2.py).
   5. Compute backdoor ATE for Race -> Loan with a sequence of adjustment sets.
 
 Outputs go to:
