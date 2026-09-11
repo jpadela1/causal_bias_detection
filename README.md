@@ -107,13 +107,11 @@ summarizes that distribution rather than describing any one run.
 ## Notes on methodology choices encoded here
 
 - **No standardization** is applied to the COMPAS frame; all Study 2 effects
-  are in decile-score points per binary Race contrast (Section VI-B of the
-  paper).
+  are in decile-score points per binary Race contrast.
 - **Estimand.** Adjustments for criminal history target the controlled direct
   effect, which coincides with the natural direct effect under the linear,
   no-interaction model; the COMPAS code and CSV outputs label this `DE`.
-  Study 1's synthetic analysis reports the backdoor-adjusted ATE, matching
-  Section V-C.
+  Study 1's synthetic analysis reports the backdoor-adjusted ATE.
 - **DirectLiNGAM prior knowledge** (Race/Sex/Age exogenous; Recidivism sink)
   is applied only in `main_compas.py`; `run_dirlingam_compas.py` provides the
   unconstrained comparison, and the bootstrap refits without background
