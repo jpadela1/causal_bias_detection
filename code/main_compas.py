@@ -68,7 +68,7 @@ def _make_dag_title(name: str, n: int, res, include_n: bool = True) -> str:
     if include_n:
         parts.append(f"n={n:,}")
     if beta is not None:
-        parts.append(r"$\hat{\beta}$" + f"={beta:+.4f}")
+        parts.append(r"est. $\beta$" + f"={beta:+.4f}")
 
     if parts:
         return f"{name}\n" + ", ".join(parts)
@@ -226,7 +226,7 @@ def main():
         results,
         flagged_edges=flagged,
         node_roles=DEFAULT_ROLES_COMPAS,
-        title=f"All algorithms on COMPAS, n={len(df):,}",
+        title=f"COMPAS n={len(df):,}",   #     title=f"All algorithms on COMPAS, n={len(df):,}",
         pos=shared_pos,
         panel_titles=panel_titles,
         save_path="figures/compas_grid.pdf",

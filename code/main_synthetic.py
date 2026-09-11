@@ -9,9 +9,11 @@ From the sensitivity dataset and to provide an equivalent comparison data using 
 Run this first. It will:
   1. Generate Dataset A (biased, beta=-0.15) and Dataset B (unbiased, beta=0).
   2. Run all six causal discovery algorithms on each dataset.
-  3. Print a Table II-style summary (SHD, Race->Loan detection, beta_hat).
+  3. Print a table-style summary (SHD, Race->Loan detection, beta_hat).
   4. Save individual + grid DAG figures to figures/. This is using visualization.py (not make_fig2.py).
   5. Compute backdoor ATE for Race -> Loan with a sequence of adjustment sets.
+  6. You can toggle the show_both_versions parameter in plot_ground_truth_dag to True to
+  visualize or render both biased and unbiased ground truth DAGs. (around line 103)
 
 Outputs go to:
     results/synthetic_summary.csv
@@ -53,7 +55,7 @@ def _make_dag_title(name: str, n: int, res, include_n: bool = True) -> str:
     if include_n:
         parts.append(f"n={n:,}")
     if beta is not None:
-        parts.append(r"$\hat{\beta}$" + f"={beta:+.3f}")
+        parts.append(r"est. $\beta$" + f"={beta:+.4f}")
 
     if parts:
         return f"{name}\n" + ", ".join(parts)
@@ -100,7 +102,7 @@ def main():
     print("\n--- Rendering ground-truth DAG ---")
     plot_ground_truth_dag(
         save_path="figures/synthetic_ground_truth",
-        show_both_versions=True,
+        show_both_versions=False,               #toggle to True for both biased and unbiased
     )
 
     # ----------------------------------------------------------------------
@@ -143,9 +145,9 @@ def main():
         print()
 
     # ----------------------------------------------------------------------
-    # Table II
+    # Table - Algorithm performance on synthetic dataset
     # ----------------------------------------------------------------------
-    print("\n=== Table II: Algorithm performance on synthetic dataset ===")
+    print("\n=== Table: Algorithm performance on synthetic dataset ===")
     df_b = summarize_dataset("biased", results_biased, GROUND_TRUTH_EDGES_BIASED)
     df_u = summarize_dataset("unbiased", results_unbiased, GROUND_TRUTH_EDGES_UNBIASED)
     summary = pd.concat([df_b, df_u], ignore_index=True)
@@ -166,7 +168,7 @@ def main():
         plot_discovery_result(
             res,
             title=f"{name} on Biased Dataset (β = -0.15)\nn={n:,}"
-                  + (r", $\hat{\beta}$" + f"={res.get_coefficient('Race', 'Loan'):+.3f}"
+                  + (r", est. $\beta$" + f"={res.get_coefficient('Race', 'Loan'):+.4f}"
                      if res.coef_matrix is not None else ""),
             flagged_edges=flagged,
             node_roles=DEFAULT_ROLES_LOAN,
@@ -182,7 +184,7 @@ def main():
         plot_discovery_result(
             res,
             title=f"{name} on Unbiased Dataset (β = 0)\nn={n:,}"
-                  + (r", $\hat{\beta}$" + f"={res.get_coefficient('Race', 'Loan'):+.3f}"
+                  + (r", est. $\beta$" + f"={res.get_coefficient('Race', 'Loan'):+.4f}"
                      if res.coef_matrix is not None else ""),
             flagged_edges=flagged,
             node_roles=DEFAULT_ROLES_LOAN,

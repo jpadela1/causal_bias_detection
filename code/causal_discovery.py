@@ -493,12 +493,13 @@ def run_ica_lingam(
 
 
 # ------------------------------------------------------------------
-# Convenience: run them all
+# Convenience: run them all - remove some for easier to read grid
+# removed the following for the grid run  "PC": run_pc, "GES": run_ges,"ICA-LiNGAM": run_ica_lingam,
 # ------------------------------------------------------------------
 ALGORITHMS = {
     "PC": run_pc,
-    "FCI": run_fci,
     "GES": run_ges,
+    "FCI": run_fci,
     "GRaSP": run_grasp,
     "ICA-LiNGAM": run_ica_lingam,
     "DirectLiNGAM": run_direct_lingam,

@@ -1,7 +1,7 @@
 """
 main_sensitivity.py
 ===================
-Reproduce Section V (Sensitivity Analysis) of the paper.
+
 
 The full paper grid:
     betas        = [0.00, 0.05, 0.10, 0.15, 0.20, 0.25]
@@ -32,7 +32,7 @@ def main():
     # ---- Adjust grid here ------------------------------------------------
     betas = [0.00, 0.05, 0.10, 0.15, 0.20, 0.25]
     sample_sizes = [1000, 5000, 10000, 50000]   # 50000 for full paper grid (slow!)
-    n_repeats = 20                  # paper uses 20
+    n_repeats = 20                  # paper uses 20, 10 was used to test
     # ----------------------------------------------------------------------
 
     df = run_sensitivity_grid(

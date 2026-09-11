@@ -1,4 +1,4 @@
-"""
+""""
 synthetic_data.py
 =================
 Generate the synthetic loan-approval datasets used in Study 1 of the paper.
@@ -27,7 +27,11 @@ Outcome (continuous "loan-approval score" by default):
     Loan = 0.5*CreditSc + 0.4*Income + beta*Race + e_L,    e_L ~ Uniform(-1, 1)
 
 
-Reset the n=5,000 including synthetic data samples, loan dataset
+Two discrimination channels are planted in the biased dataset:
+    * DIRECT : Race -> Loan                       (coefficient beta = -0.15)
+    * PROXY  : Race -> ZIP -> CreditSc -> Loan     (-0.50 * 0.30 * 0.50)
+      ZIP is a facially-neutral proxy: it carries Race's influence to the
+      outcome through CreditSc without a direct Race->Loan edge.
 
 Datasets:
     Dataset A (biased)   : beta = -0.15  (planted direct discrimination)
@@ -36,6 +40,8 @@ Datasets:
 Non-Gaussian (Uniform) noise is required for LiNGAM identifiability.
 """
 from __future__ import annotations
+
+import os
 
 import numpy as np
 import pandas as pd
@@ -177,230 +183,83 @@ GROUND_TRUTH_NODE_ROLES = {
     "Loan":      "outcome",
 }
 
+# Proxy-discrimination pathway: the two legs that make ZIP a proxy for Race.
+# Race -> ZIP -> CreditSc carries Race's influence to the outcome without a
+# direct Race->Loan edge (the remaining CreditSc -> Loan leg is shared with
+# legitimate paths, so it is not highlighted as proxy-specific). These edges
+# are drawn in the proxy color so the pathway reads as clearly as the planted
+# direct-bias edge. Edit this set if the proxy structure changes.
+PROXY_PATHWAY_EDGES = {("Race", "ZIP"), ("ZIP", "CreditSc")}
+
 
 def plot_ground_truth_dag(
     save_path: str = "figures/ground_truth_dag",
     show_coefficients: bool = True,
     title: str = "Ground-Truth DAG: Synthetic Loan-Approval SCM",
-    show_both_versions: bool = True,
+    show_both_versions: bool = False,  #False shows the biased version only, True shows both versions
 ):
-    """Render the SCM as a DAG figure.
+    """Render the SCM as a DAG figure, via the shared Graphviz renderer.
+
+    Rendering is delegated to ``visualization.plot_edge_list`` — the same code
+    path, and therefore the same node shapes, fills and legend, that every
+    discovered DAG goes through. This module keeps only the SCM
+    *specification* (GROUND_TRUTH_EDGES / GROUND_TRUTH_NODE_ROLES /
+    PROXY_PATHWAY_EDGES), so the figure stays in sync with the equations
+    above and cannot drift from the discovery figures' styling.
+
+    The two discrimination channels stay visually distinct: the planted DIRECT
+    bias (Race -> Loan) is red and dashed, and the PROXY pathway
+    (Race -> ZIP -> CreditSc) is drawn in the proxy colour with a heavier
+    stroke. Both cues survive greyscale printing, as does the role-to-shape
+    encoding (SES, unobserved, is a dashed diamond).
 
     Parameters
     ----------
     save_path : str
-        Basename (extension is stripped). Figure goes to <basename>.png/pdf.
+        Basename (extension is stripped). Figure goes to <basename>.pdf/.png.
     show_coefficients : bool
         If True, label each edge with its structural coefficient.
     title : str
         Figure-level title.
     show_both_versions : bool
-        If True, draws two side-by-side panels: BIASED (with Race -> Loan)
-        and UNBIASED (without). If False, draws only the biased version.
+        If True, writes TWO figures -- "<save_path>_biased" (with Race -> Loan)
+        and "<save_path>_unbiased" (without) -- and returns both. Graphviz lays
+        out one graph per drawing, so the two SCMs are separate files rather
+        than the side-by-side panels the old matplotlib version produced. If
+        False, only the biased version is written, to <save_path>.
+
+    Returns the ``graphviz.Digraph``, or a list of two when
+    ``show_both_versions`` is True.
     """
-    import math
-    import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
-    from matplotlib.patches import FancyArrowPatch, Patch
+    from visualization import plot_edge_list
 
-    # Layered LEFT-TO-RIGHT positions
+    edges_biased   = list(GROUND_TRUTH_EDGES)
+    edges_unbiased = [e for e in GROUND_TRUTH_EDGES
+                      if not (e[0] == "Race" and e[1] == "Loan")]
 
-    pos = {
-        # column 0 (left): exogenous protected attributes + latent confounder
-        "Race":      (-3.0,  1.8),
-        "Gender":    (-3.0,  0.0),
-        "SES":       (-3.0, -1.8),
-        # column 1: ZIP (Race-driven) and Education (Gender + SES driven)
-        "ZIP":       (-1.0,  1.8),
-        "Education": (-1.0, -0.5),
-        # column 2: Income (mediator with many parents)
-        "Income":    ( 1.0,  0.6),
-        # column 3: CreditSc
-        "CreditSc":  ( 3.0,  0.6),
-        # column 4 (right): Loan outcome, sink
-        "Loan":      ( 5.0,  0.6),
-    }
+    def _render(edges, path, panel_title):
+        return plot_edge_list(
+            edges,
+            title             = panel_title,
+            node_roles        = GROUND_TRUTH_NODE_ROLES,
+            flagged_edges     = [("Race", "Loan")],
+            proxy_edges       = PROXY_PATHWAY_EDGES,
+            show_coefficients = show_coefficients,
+            save_path         = path,
+            flagged_label     = "Planted direct bias (Race \u2192 Loan)",
+        )
 
-    role_colors = {
-        "latent":    "#FFFFFF",   # white fill, dashed border (drawn below)
-        "protected": "#A6CEE3",   # soft sky blue
-        "proxy":     "#FDB863",   # pale orange
-        "covariate": "#CCCCCC",   # light gray
-        "mediator":  "#A6DBA0",   # pastel green
-        "outcome":   "#FBB4AE",   # soft pink
-    }
-    role_labels = {
-        "latent":    "Latent confounder (unobserved)",
-        "protected": "Protected attribute",
-        "proxy":     "Proxy variable",
-        "covariate": "Covariate",
-        "mediator":  "Mediator",
-        "outcome":   "Outcome",
-    }
+    biased_title = f"{title}\nBiased SCM (Dataset A, \u03b2 = \u22120.15)"
 
-    NODE_SIZE = 1700
-    NODE_RADIUS_PT = math.sqrt(NODE_SIZE / math.pi)
-    EXTRA_MARGIN = 4.0
+    if not show_both_versions:
+        return _render(edges_biased, save_path, biased_title)
 
-    def _draw_panel(ax, edges_to_draw, panel_title: str):
-        # Edges first
-        for src, dst, coef in edges_to_draw:
-            is_planted_bias = (src == "Race" and dst == "Loan")
-            is_latent_edge = (src == "SES")
-            color = "#D62728" if is_planted_bias else (
-                "#888888" if is_latent_edge else "#333333"
-            )
-            style = "dashed" if (is_planted_bias or is_latent_edge) else "solid"
-            lw = 2.4 if is_planted_bias else (1.2 if is_latent_edge else 1.6)
-            # Curve the planted-bias edge strongly so it sweeps along
-            # the BOTTOM of the layout past the lower nodes instead of
-            # cutting through the middle. Positive rad = curve below
-            # the line connecting source to target.
-            if is_planted_bias:
-                rad = 0.45
-            elif is_latent_edge:
-                rad = 0.05
-            else:
-                rad = 0.05
-            arrow = FancyArrowPatch(
-                posA=pos[src], posB=pos[dst],
-                arrowstyle="-|>", mutation_scale=22 if is_planted_bias else 20,
-                color=color, linewidth=lw, linestyle=style,
-                connectionstyle=f"arc3,rad={rad}",
-                shrinkA=NODE_RADIUS_PT + EXTRA_MARGIN,
-                shrinkB=NODE_RADIUS_PT + EXTRA_MARGIN,
-                zorder=3 if is_planted_bias else 2,
-            )
-            ax.add_patch(arrow)
-
-            if show_coefficients:
-                MANUAL_LABEL_POS = {
-                    # SES (-3, -1.8) -> Education (-1, -0.5)
-                    ("SES",       "Education"): (-2.4, -1.3),
-                    # SES (-3, -1.8) -> Income (1, 0.6)
-                    ("SES",       "Income"):    ( 0.0, -1.4),
-                    # Gender (-3, 0) -> Education (-1, -0.5)
-                    ("Gender",    "Education"): (-2.4, -0.4),
-                    # Gender (-3, 0) -> Income (1, 0.6)
-                    ("Gender",    "Income"):    (-1.5,  0.6),
-                    # Race (-3, 1.8) -> ZIP (-1, 1.8)
-                    ("Race",      "ZIP"):       (-2.0,  2.1),
-                    # Race (-3, 1.8) -> Income (1, 0.6)
-                    ("Race",      "Income"):    (-0.7,  1.6),
-                    # Race -> Loan (curved bottom): apex around (1, -0.6)
-                    ("Race",      "Loan"):      ( 1.0, -1.1),
-                    # ZIP (-1, 1.8) -> CreditSc (3, 0.6)
-                    ("ZIP",       "CreditSc"):  ( 1.0,  1.5),
-                    # Education (-1, -0.5) -> Income (1, 0.6)
-                    ("Education", "Income"):    (-0.3,  0.4),
-                    # Education (-1, -0.5) -> CreditSc (3, 0.6)
-                    ("Education", "CreditSc"):  ( 1.5, -0.2),
-                    # Income (1, 0.6) -> CreditSc (3, 0.6)
-                    ("Income",    "CreditSc"):  ( 2.0,  0.95),
-                    # Income (1, 0.6) -> Loan (5, 0.6) -- top arc
-                    ("Income",    "Loan"):      ( 3.0,  1.05),
-                    # CreditSc (3, 0.6) -> Loan (5, 0.6)
-                    ("CreditSc",  "Loan"):      ( 4.0,  0.95),
-                }
-                if (src, dst) in MANUAL_LABEL_POS:
-                    lab_x, lab_y = MANUAL_LABEL_POS[(src, dst)]
-                else:
-                    # Algorithmic fallback: 45% along the edge with a
-                    # perpendicular nudge.
-                    dx = pos[dst][0] - pos[src][0]
-                    dy = pos[dst][1] - pos[src][1]
-                    edge_len = (dx * dx + dy * dy) ** 0.5 or 1.0
-                    t = 0.45 if edge_len < 2.0 else 0.55
-                    base_x = pos[src][0] + t * dx
-                    base_y = pos[src][1] + t * dy
-                    perp_x = -dy / edge_len
-                    perp_y = dx / edge_len
-                    offset = 0.22 if base_x >= 0 else -0.22
-                    lab_x = base_x + perp_x * offset
-                    lab_y = base_y + perp_y * offset
-
-                label_color = ("#D62728" if is_planted_bias else
-                               ("#666666" if is_latent_edge else "#222222"))
-                ax.text(
-                    lab_x, lab_y, coef, fontsize=8, ha="center", va="center",
-                    color=label_color, fontweight="bold",
-                    bbox=dict(facecolor="white", edgecolor="#dddddd",
-                              alpha=0.95, boxstyle="round,pad=0.18",
-                              linewidth=0.5),
-                    zorder=6,
-                )
-
-        # Nodes
-        for v, (x, y) in pos.items():
-            role = GROUND_TRUTH_NODE_ROLES.get(v, "covariate")
-            face = role_colors[role]
-            edge_style = "--" if role == "latent" else "-"
-            edge_lw = 2.0 if role == "latent" else 1.5
-            edge_color = "#666666" if role == "latent" else "black"
-            ax.scatter(
-                x, y, s=NODE_SIZE, c=face, edgecolors=edge_color,
-                linewidths=edge_lw, zorder=4,
-                 )
-            if role == "latent":
-                # Overlay a dashed circle for the latent node
-                circle = plt.Circle(
-                    (x, y), 0.155, fill=False,
-                    edgecolor=edge_color, linewidth=edge_lw,
-                    linestyle=edge_style, zorder=4.5,
-                )
-                ax.add_patch(circle)
-            ax.annotate(v, xy=(x, y), ha="center", va="center",
-                        fontsize=9, fontweight="bold", zorder=5)
-
-        ax.set_title(panel_title, fontsize=12, fontweight="bold", pad=10)
-        ax.set_xlim(-4.0, 6.0)
-        ax.set_ylim(-3.2, 2.8)
-        ax.set_aspect("equal")
-        ax.set_axis_off()
-
-    # --- Figure assembly ----------------------------------------------------
-    if show_both_versions:
-        fig, (ax_b, ax_u) = plt.subplots(1, 2, figsize=(18, 6.5))
-        edges_biased = GROUND_TRUTH_EDGES
-        edges_unbiased = [e for e in GROUND_TRUTH_EDGES
-                          if not (e[0] == "Race" and e[1] == "Loan")]
-        _draw_panel(ax_b, edges_biased,
-                    "Biased SCM (Dataset A, β = −0.15)")
-        _draw_panel(ax_u, edges_unbiased,
-                    "Unbiased SCM (Dataset B, β = 0.00)")
-    else:
-        fig, ax = plt.subplots(figsize=(11, 6))
-        _draw_panel(ax, GROUND_TRUTH_EDGES,
-                    "Biased SCM (Dataset A, β = −0.15)")
-
-    # --- Legend ------------------------------------------------------------
-    legend_handles = [
-        Line2D([0], [0], color="#333333", lw=1.6, marker=">",
-               markersize=9, label="Observed causal edge"),
-        Line2D([0], [0], color="#888888", lw=1.2, linestyle="--",
-               marker=">", markersize=9, label="Edge from latent SES"),
-        Line2D([0], [0], color="#D62728", lw=2.4, linestyle="--",
-               marker=">", markersize=9, label="Planted direct bias (Race → Loan)"),
+    base = os.path.splitext(save_path)[0]
+    return [
+        _render(edges_biased, f"{base}_biased", biased_title),
+        _render(edges_unbiased, f"{base}_unbiased",
+                f"{title}\nUnbiased SCM (Dataset B, \u03b2 = 0.00)"),
     ]
-    legend_handles.extend([
-        Patch(facecolor=role_colors[role], edgecolor="black",
-              label=role_labels[role])
-        for role in ["protected", "proxy", "covariate", "mediator",
-                     "outcome", "latent"]
-    ])
-
-    fig.subplots_adjust(top=0.86, bottom=0.16, left=0.03, right=0.97)
-    fig.suptitle(title, fontsize=14, fontweight="bold", y=0.95)
-    fig.legend(handles=legend_handles, loc="lower center",
-               ncol=3, frameon=True, fancybox=True, framealpha=0.95,
-               edgecolor="#cccccc", fontsize=9,
-               bbox_to_anchor=(0.5, 0.02))
-
-    # Save both formats
-    from visualization import save_figure_dual_format
-    save_figure_dual_format(fig, save_path)
-    plt.close(fig)
-    return fig
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ outcomes always appear on the right, protected attributes on the left.
 
 PUBLIC API IS UNCHANGED:
     plot_discovery_result(result, title, flagged_edges, node_roles, ...)
+    plot_edge_list(edges, title, node_roles, flagged_edges, proxy_edges, ...)
     plot_grid(results, flagged_edges, node_roles, title, ...)
     compute_shared_pos(results, ...)    # no-op — Graphviz handles layout
     save_figure_dual_format(fig, ...)  # kept for backward compatibility
@@ -34,6 +35,7 @@ OUTPUT:
 """
 from __future__ import annotations
 
+import math
 import os
 import shutil
 import tempfile
@@ -75,6 +77,8 @@ COLOR_DIRECTED   = "#333333"
 COLOR_UNDIRECTED = "#555555"   # dark grey — visible in print (was #888888)
 COLOR_BIDIRECTED = "#9B59B6"
 COLOR_FLAGGED    = "#D62728"
+COLOR_PROXY      = "#D9820A"   # proxy-discrimination pathway (ground-truth DAG)
+COLOR_LATENT_EDGE = "#888888"  # edges originating at an unobserved node
 
 NODE_ROLE_COLORS = {
     "protected": "#A6CEE3",
@@ -82,15 +86,113 @@ NODE_ROLE_COLORS = {
     "mediator":  "#A6DBA0",
     "outcome":   "#FBB4AE",
     "covariate": "#CCCCCC",
+    "latent":    "#FFFFFF",
+}
+
+# Shape is a REDUNDANT encoding of role, so the figure still reads when the
+# journal prints it in greyscale.  The five fills above have nearly identical
+# luminance (#CCCCCC and #A6DBA0 both land near L*=80), so colour alone does
+# not survive a black-and-white printer or a colour-blind reader.
+NODE_ROLE_SHAPES = {
+    "protected": "octagon",
+    "proxy":     "hexagon",
+    "mediator":  "ellipse",
+    "outcome":   "box",
+    "covariate": "ellipse",
+    "latent":    "diamond",
+}
+
+# Extra outline for roles whose shape would otherwise collide (covariate and
+# mediator are both ellipses; the double outline separates them in greyscale).
+NODE_ROLE_PERIPHERIES = {
+    "covariate": "2",
+}
+
+# Per-role node style.  "latent" carries a dashed border on top of its own
+# shape: an unobserved variable is conventionally drawn dashed, and the extra
+# cue costs nothing in greyscale (the white fill alone would be ambiguous
+# against the page).  Roles absent here use the graph-level "filled".
+NODE_ROLE_STYLES = {
+    "latent": "filled,dashed",
 }
 
 ROLE_LABELS = {
-    "protected": "Protected attribute",
-    "proxy":     "Proxy variable",
-    "mediator":  "Mediator",
-    "outcome":   "Outcome",
-    "covariate": "Covariate",
+    "protected": "Protected (octagon)",
+    "proxy":     "Proxy (hexagon)",
+    "mediator":  "Mediator (ellipse)",
+    "outcome":   "Outcome (rectangle)",
+    "covariate": "Covariate (double ellipse)",
+    "latent":    "Latent, unobserved (dashed diamond)",
 }
+
+# =============================================================================
+# LAYOUT PRESETS  —  the key to legible output
+# =============================================================================
+# The renderer deliberately does NOT set Graphviz's `size` or `ratio`
+# attributes.  `size` is a *maximum*: whenever the natural layout is larger,
+# Graphviz writes a uniform scale factor into the output, shrinking every
+# font and stroke.  That is what made earlier versions unreadable — raising
+# `node_width`/`fontsize` grew the natural layout, which lowered the scale
+# factor, which cancelled the change out exactly.
+#
+# Instead: pick the preset whose *natural* width matches the width the figure
+# will occupy on paper, then \includegraphics it at 1:1 (or near it).  Then a
+# 12 pt font in this file is a 12 pt font on the printed page.
+#
+# Natural width  ~=  n_ranks*node_width + (n_ranks-1)*ranksep + edge-label space
+# Both studies lay out in 5 rank columns.
+LAYOUT_PRESETS = {
+    # ~7.5 in wide: two-column paper, full-width float (\begin{figure*}).
+    # Include with \includegraphics[width=\textwidth]{...} -> scale ~0.95.
+    "fullwidth": dict(node_font_size=12, edge_font_size=9,
+                      node_width="0.95", node_height="0.52",
+                      ranksep="0.55", nodesep="0.30",
+                      edge_penwidth="1.4", node_penwidth="1.0"),
+    # ~3.6 in wide: single column.  Tight — consider show_coefficients=False.
+    "column":    dict(node_font_size=9, edge_font_size=7,
+                      node_width="0.62", node_height="0.38",
+                      ranksep="0.30", nodesep="0.16",
+                      edge_penwidth="1.0", node_penwidth="0.8"),
+    # Panels inside plot_grid: each occupies ~1/3 of a full-width float, so
+    # the type must be proportionally larger to survive that reduction.
+    "panel":     dict(node_font_size=16, edge_font_size=12,
+                      node_width="1.10", node_height="0.62",
+                      ranksep="0.60", nodesep="0.28",
+                      edge_penwidth="1.9", node_penwidth="1.4"),
+}
+
+DEFAULT_PRESET = "fullwidth"   # <- switch to "column" for single-column figures
+
+
+# =============================================================================
+# TITLE SANITIZING
+# =============================================================================
+# Titles were written for matplotlib's mathtext ($\hat{\beta}$).  Graphviz has
+# no mathtext, so those would print literally as "$\hat{\beta}$".  Map the few
+# constructs actually used to Unicode instead.
+_MATHTEXT_REPLACEMENTS = (
+    (r"$\hat{\beta}$", "β̂"),   # beta with combining circumflex
+    (r"\hat{\beta}",   "β̂"),
+    (r"$\beta$",       "β"),
+    (r"\beta",         "β"),
+)
+
+
+def _plain_title(text: str) -> str:
+    """Convert a matplotlib-mathtext title into a Graphviz-safe label.
+
+    Returns a string using Graphviz's ``\\n`` line-break escape, with any
+    leftover TeX punctuation removed.
+    """
+    out = text
+    for tex, uni in _MATHTEXT_REPLACEMENTS:
+        out = out.replace(tex, uni)
+    # Drop any remaining TeX scaffolding, then re-introduce line breaks using
+    # Graphviz's own escape (order matters: strip backslashes first).
+    out = out.replace("$", "").replace("\\", "")
+    out = out.replace('"', "'")
+    return out.replace("\n", "\\n")
+
 
 DEFAULT_ROLES_LOAN = {
     "Race":      "protected",
@@ -114,8 +216,10 @@ DEFAULT_ROLES_COMPAS = {
     "Recidivism":   "outcome",
 }
 
-# Rank-pinned node sets for rankdir=LR layout
-_SOURCE_NODES = {"Race", "Gender", "Sex"}
+# Rank-pinned node sets for rankdir=LR layout.  SES is exogenous in the
+# ground-truth SCM and never appears in a discovery result (it is the
+# unobserved confounder), so pinning it left affects only the ground-truth DAG.
+_SOURCE_NODES = {"Race", "Gender", "Sex", "SES"}
 _SINK_NODES   = {"Loan", "Score", "Recidivism"}
 
 
@@ -151,11 +255,20 @@ def _build_dot(
     roles: dict,
     show_coefficients: bool,
     coef_threshold: float,
-    node_font_size: int = 16,
-    edge_font_size: int = 20,
-    node_width: str = "1.7",
-    ranksep: str = "4.0",        # ← new; widen for individual DAGs JSP 2.5
-    canvas_size: str = "14,9",   # ← new; aspect ratio of the rendered PNG
+    coef_decimals: int = 4,
+    preset: str = DEFAULT_PRESET,
+    show_title: bool = True,
+    # Per-call overrides.  None means "take the value from `preset`".
+    node_font_size: Optional[int] = None,
+    edge_font_size: Optional[int] = None,
+    node_width: Optional[str] = None,
+    ranksep: Optional[str] = None,
+    nodesep: Optional[str] = None,
+    canvas_size: Optional[str] = None,   # accepted for API compat; see note
+    # Ground-truth extras.  Both default to "off", so a DiscoveryResult built
+    # by any discovery algorithm takes exactly the path it did before.
+    proxy: Optional[set] = None,
+    edge_labels: Optional[dict] = None,
 ) -> "gv.Digraph":
     """
     Convert one DiscoveryResult into a graphviz.Digraph.
@@ -167,48 +280,77 @@ def _build_dot(
     rank=same (mid)    : dataset-aware intermediate rank groups spread
                          intermediate nodes across the available width.
     rank=max           : pins Loan/Score/Recidivism to the rightmost column.
-    splines=curved     : smooth cubic Bezier curves.  Tighter and less
-                         circuitous than splines=spline for long-distance
-                         edges such as Race→Loan that skip many rank columns.
-    size / ratio=fill  : tells Graphviz to use the full page area so nodes
-                         are spread across the right side of the canvas,
-                         not compressed toward the left.
+
+    NO `size`, NO `ratio`
+    ---------------------
+    ``canvas_size`` is accepted but ignored, on purpose.  Setting Graphviz's
+    ``size`` caps the drawing and makes Graphviz emit a uniform scale factor,
+    which shrinks every font and stroke in the output — the drawing is then
+    reduced a *second* time when LaTeX fits it to the column.  Two successive
+    reductions is what made these figures illegible.  Sizing is controlled
+    instead by LAYOUT_PRESETS, which targets the printed width directly.
+
+    Node shape
+    ----------
+    ``fixedsize=false`` lets each node grow to fit its label, with the
+    preset's ``node_width``/``node_height`` acting as a *minimum* so nodes
+    stay visually uniform.  Shape encodes role redundantly with fill colour
+    so the figure survives greyscale printing.
 
     Edge labels
     -----------
-    Graphviz places the label string at the midpoint of the spline
-    curve automatically — no manual Bézier math needed.
+    ``label`` (not ``xlabel``) is used so Graphviz reserves layout space for
+    each coefficient on its spline.  ``xlabel`` floats free and, combined
+    with ``forcelabels=true``, is explicitly permitted to overlap.
     """
-    # Title is shown by matplotlib, not embedded in the dot graph, so that
-    # the PNG we hand to matplotlib does not already have a title baked in.
+    cfg = dict(LAYOUT_PRESETS[preset])
+    if node_font_size is not None:
+        cfg["node_font_size"] = node_font_size
+    if edge_font_size is not None:
+        cfg["edge_font_size"] = edge_font_size
+    if node_width is not None:
+        cfg["node_width"] = node_width
+    if ranksep is not None:
+        cfg["ranksep"] = ranksep
+    if nodesep is not None:
+        cfg["nodesep"] = nodesep
+
+    graph_attr = dict(
+        rankdir  = "LR",
+        splines  = "spline",
+        nodesep  = cfg["nodesep"],
+        ranksep  = cfg["ranksep"],
+        pad      = "0.12",
+        bgcolor  = "white",
+        fontname = "Helvetica-Bold",
+        fontsize = str(cfg["node_font_size"] + 1),
+        # `size` and `ratio` deliberately omitted — see docstring.
+        # `forcelabels` deliberately omitted — it is what allows label overlap.
+    )
+    if show_title and title:
+        graph_attr["label"]     = _plain_title(title)
+        graph_attr["labelloc"]  = "t"
+        graph_attr["labeljust"] = "c"
+
     dot = gv.Digraph(
-        name=title,
-        graph_attr=dict(
-            rankdir  = "LR",
-            splines  = "spline",  # proper B-spline routing — clean, professional
-            nodesep  = "0.9",
-            ranksep  = ranksep,
-            pad      = "0.6",
-            bgcolor  = "white",
-            fontname = "Helvetica",
-            size     = canvas_size,
-            ratio    = "fill",
-            forcelabels = "true",   # always render xlabels even if crowded
-        ),
+        name="G",
+        graph_attr=graph_attr,
         node_attr=dict(
-            shape     = "circle",
             style     = "filled",
             fontname  = "Helvetica-Bold",
-            fontsize  = str(node_font_size),
-            fixedsize = "true",
-            width     = node_width,
-            height    = node_width,
+            fontsize  = str(cfg["node_font_size"]),
+            fontcolor = "black",
+            fixedsize = "false",       # label drives size; width is a minimum
+            width     = cfg["node_width"],
+            height    = cfg["node_height"],
+            margin    = "0.06,0.035",
         ),
         edge_attr=dict(
             fontname  = "Helvetica",
-            fontsize  = str(edge_font_size),
-            fontcolor = "#444444",
-            penwidth  = "2.2",     # thicker edges for print legibility (was 1.6)
+            fontsize  = str(cfg["edge_font_size"]),
+            fontcolor = "black",       # grey edge labels vanish first in print
+            penwidth  = cfg["edge_penwidth"],
+            arrowsize = "0.8",
         ),
     )
 
@@ -219,7 +361,19 @@ def _build_dot(
     for v in result.variables:
         role  = roles.get(v, "covariate")
         fill  = NODE_ROLE_COLORS.get(role, "#CCCCCC")
-        dot.node(v, label=v, fillcolor=fill, color="black", penwidth="2.2")
+        shape = NODE_ROLE_SHAPES.get(role, "ellipse")
+        attrs = dict(
+            label     = v,
+            shape     = shape,
+            fillcolor = fill,
+            color     = "black",
+            penwidth  = cfg["node_penwidth"],
+        )
+        if role in NODE_ROLE_STYLES:
+            attrs["style"] = NODE_ROLE_STYLES[role]
+        if role in NODE_ROLE_PERIPHERIES:
+            attrs["peripheries"] = NODE_ROLE_PERIPHERIES[role]
+        dot.node(v, **attrs)
         if v in _SOURCE_NODES:
             source_nodes.append(v)
         if v in _SINK_NODES:
@@ -244,7 +398,10 @@ def _build_dot(
     # spread across the full canvas width rather than bunching together.
     _COMPAS_VARS = {"Race","Sex","Age","JuvFelony","JuvMisd",
                     "Priors","ChargeDegree","Score","Recidivism"}
-    _LOAN_VARS   = {"Race","Gender","Education","ZIP","Income","CreditSc","Loan"}
+    # SES is present only in the ground-truth DAG; including it here keeps that
+    # graph inside the Loan branch so it gets the same rank columns.
+    _LOAN_VARS   = {"Race","Gender","Education","ZIP","Income","CreditSc",
+                    "Loan","SES"}
 
     if vars_set.issubset(_COMPAS_VARS):
         # COMPAS: 5 rank columns
@@ -277,42 +434,79 @@ def _build_dot(
                         s.node(v)
 
     # ── Directed edges ────────────────────────────────────────────────────────
+    proxy_set = set(proxy or ())
     for src, dst in result.directed_edges:
         is_fl = (src, dst) in flagged
         label = ""
-        if show_coefficients and result.coef_matrix is not None:
-            coef = result.get_coefficient(src, dst)
-            if coef is not None and abs(coef) >= coef_threshold:
-                label = f"{coef:+.4f}"
+        if show_coefficients:
+            if edge_labels is not None and (src, dst) in edge_labels:
+                # Caller-supplied label (the ground-truth DAG passes the SCM's
+                # own coefficient strings, e.g. "0.40" / "β=−0.15").
+                label = str(edge_labels[(src, dst)])
+            elif result.coef_matrix is not None:
+                coef = result.get_coefficient(src, dst)
+                if coef is not None and abs(coef) >= coef_threshold:
+                    label = f"{coef:+.{coef_decimals}f}"
+
+        # Proxy pathway and latent-source edges are ground-truth-only tiers:
+        # `proxy` is empty for discovery results, and no discovery result
+        # contains a node whose role is "latent", so neither branch fires there.
+        is_proxy     = (src, dst) in proxy_set
+        is_latent_src = roles.get(src) == "latent"
+
         if is_fl:
+            # The one edge under test. Dash + colour + extra weight; the dash
+            # pattern is reserved for this edge alone so it is unambiguous.
             dot.edge(src, dst,
-                     xlabel     = label,      # xlabel works with splines=curved
+                     label      = label,
                      color      = COLOR_FLAGGED,
                      style      = "dashed",
-                     penwidth   = "2.8",
-                     arrowsize  = "1.3",
+                     penwidth   = str(float(cfg["edge_penwidth"]) + 0.5),
+                     arrowsize  = "0.9",
                      fontcolor  = COLOR_FLAGGED,
                      fontname   = "Helvetica-Bold",
-                     fontsize   = str(edge_font_size + 1),
+                     fontsize   = str(cfg["edge_font_size"] + 1),
                      constraint = "false",
                      weight     = "0.5")
+        elif is_proxy:
+            # Proxy-discrimination pathway.  Distinguished from an ordinary
+            # edge by STROKE WEIGHT, not colour, so the pathway still traces
+            # in greyscale; the dash pattern stays reserved for the flagged
+            # edge so the two tiers never collide in black and white.
+            dot.edge(src, dst,
+                     label     = label,
+                     color     = COLOR_PROXY,
+                     style     = "solid",
+                     penwidth  = str(float(cfg["edge_penwidth"]) + 1.2),
+                     arrowsize = "0.9",
+                     fontcolor = COLOR_PROXY,
+                     fontname  = "Helvetica-Bold")
+        elif is_latent_src:
+            # Edge out of an unobserved node: thin and grey, matching the
+            # dashed node border so the whole latent channel recedes.
+            dot.edge(src, dst,
+                     label     = label,
+                     color     = COLOR_LATENT_EDGE,
+                     style     = "dashed",
+                     penwidth  = str(max(float(cfg["edge_penwidth"]) - 0.4, 0.6)),
+                     fontcolor = "#555555")
         else:
             dot.edge(src, dst,
-                     xlabel   = label,      # xlabel works with splines=curved
-                     color    = COLOR_DIRECTED,
-                     style    = "solid",
-                     fontcolor= "#444444")
+                     label     = label,
+                     color     = COLOR_DIRECTED,
+                     style     = "solid",
+                     fontcolor = "black")
 
     # ── Undirected edges ──────────────────────────────────────────────────────
-    # Dotted lines must be thick and dark enough to survive PDF→print scaling.
-    # #555555 (dark grey) is far more visible than #888888 in print.
-    # penwidth=3.0 ensures the dots are large enough to see at paper size.
+    # Distinguished by the ABSENCE of an arrowhead, not by color or dash
+    # pattern: dotted strokes disintegrate under reduction, and grey is the
+    # first thing a printer loses.
     for src, dst in result.undirected_edges:
         dot.edge(src, dst,
-                 dir     = "none",
-                 style   = "dotted",
-                 color   = "#555555",   # darker than before (#888888)
-                 penwidth= "3.0")       # much thicker (was 1.3)
+                 dir      = "none",
+                 style    = "solid",
+                 color    = COLOR_UNDIRECTED,
+                 penwidth = cfg["edge_penwidth"])
 
     # ── Bidirected edges (latent confounder) ──────────────────────────────────
     for src, dst in result.bidirected_edges:
@@ -320,8 +514,8 @@ def _build_dot(
                  dir      = "both",
                  style    = "solid",
                  color    = COLOR_BIDIRECTED,
-                 penwidth = "2.8",     # thicker (was 2.0)
-                 arrowsize= "1.3")
+                 penwidth = str(float(cfg["edge_penwidth"]) + 0.3),
+                 arrowsize= "0.9")
 
     return dot
 
@@ -335,91 +529,105 @@ def _add_legend_cluster(
     roles_present: list[str],
     has_bidirected: bool,
     has_flagged: bool,
+    has_undirected: bool = True,
+    rank_with: Optional[list[str]] = None,
+    has_proxy: bool = False,
+    has_latent_edge: bool = False,
+    flagged_label: str = "Flagged (for review)",
 ) -> None:
     """
-    Embed a legend inside the Graphviz graph as a cluster subgraph.
+    Embed a legend in the graph as a single HTML-table node.
 
-    Each row is a pair: a tiny dummy arrow node + a text-label node,
-    connected by a styled invisible edge that acts as the legend icon.
-    Node roles are shown as filled rectangles.
+    Why one node
+    ------------
+    The obvious encoding — a dummy node pair per row, joined by a styled edge
+    that acts as the icon — cannot work under ``rankdir=LR``.  Each pair
+    consumes two ranks, so the legend spreads across the drawing horizontally
+    instead of stacking, and rank/cluster hints cannot pull it back: `rankdir`
+    is a whole-graph attribute, and Graphviz gives no way to pin a cluster to
+    the bottom edge.  One table node has exactly one rank to place, so the
+    layout is predictable, and its rows stack the way a legend should.
+
+    Edge styles are shown with coloured Unicode glyphs rather than real
+    arrows, which is the trade for that predictability.  Role swatches are
+    real filled cells, matching the node fills exactly.
     """
-    with dot.subgraph(name="cluster_legend") as leg:
-        leg.attr(
-            label     = "Legend",
-            style     = "rounded,filled",
-            fillcolor = "#f5f5f5",
-            color     = "#bbbbbb",
-            fontname  = "Helvetica",
-            fontsize  = "10",
-            penwidth  = "1.0",
-            margin    = "12",
-            rank      = "sink",
+    rows: list[str] = []
+
+    def _icon_row(glyph: str, color: str, text: str) -> None:
+        rows.append(
+            f'<TR>'
+            f'<TD ALIGN="CENTER" WIDTH="18">'
+            f'<FONT COLOR="{color}" POINT-SIZE="10"><B>{glyph}</B></FONT></TD>'
+            f'<TD ALIGN="LEFT">{text}</TD>'
+            f'</TR>'
         )
-        leg.attr("node",
-                 shape    = "none",
-                 margin   = "0",
-                 fontname = "Helvetica",
-                 fontsize = "9",
-                 width    = "0.1",
-                 height   = "0.1",
-                 style    = "invis")
 
-        prev = None
+    _icon_row("&#8594;", COLOR_DIRECTED, "Directed (i &#8594; j)")
+    if has_undirected:
+        _icon_row("&#8212;", COLOR_UNDIRECTED, "Undirected (i &#8212; j)")
+    if has_bidirected:
+        _icon_row("&#8596;", COLOR_BIDIRECTED, "Bidirected (latent confounder)")
+    if has_proxy:
+        # Em dash + solid pointer reads as a heavy unbroken arrow, mirroring
+        # the pathway's heavier stroke.  Both glyphs are already used by the
+        # rows above, so they are known to exist in the legend font — the
+        # dingbat arrows (U+279E and friends) are not, and render as tofu.
+        _icon_row("&#8212;&#9658;", COLOR_PROXY,
+                  "Proxy pathway (heavy stroke)")
+    if has_flagged:
+        # en-dashes read as a dashed stroke at this size
+        _icon_row("&#8211;&#8211;&#9658;", COLOR_FLAGGED, flagged_label)
+    if has_latent_edge:
+        _icon_row("&#8211;&#8211;&#9658;", COLOR_LATENT_EDGE,
+                  "Edge from latent node (thin dashed)")
 
-        def _leg_row(nid_src, nid_dst, text, color, style, direction, pw):
-            nonlocal prev
-            leg.node(nid_src, label="", style="invis", width="0.1", height="0.1")
-            leg.node(nid_dst,
-                     label    = f'<<FONT FACE="Helvetica" POINT-SIZE="9">'
-                                f'{text}</FONT>>',
-                     style    = "invis")
-            leg.edge(nid_src, nid_dst,
-                     color    = color,
-                     style    = style,
-                     dir      = direction,
-                     penwidth = pw,
-                     arrowsize= "0.6",
-                     minlen   = "1")
-            if prev:
-                leg.edge(prev, nid_src, style="invis", weight="10")
-            prev = nid_dst
+    for role in roles_present:
+        fill = NODE_ROLE_COLORS.get(role, "#CCCCCC")
+        rows.append(
+            f'<TR>'
+            f'<TD BGCOLOR="{fill}" WIDTH="34" BORDER="1" COLOR="black"> </TD>'
+            f'<TD ALIGN="LEFT">{ROLE_LABELS.get(role, role)}</TD>'
+            f'</TR>'
+        )
 
-        _leg_row("ld_s", "ld_t", "Directed (i → j)",
-                 COLOR_DIRECTED,   "solid",  "forward", "1.4")
-        _leg_row("lu_s", "lu_t", "Undirected (i — j)",
-                 COLOR_UNDIRECTED, "dotted", "none",    "1.1")
-        if has_bidirected:
-            _leg_row("lb_s", "lb_t", "Bidirected (latent confounder)",
-                     COLOR_BIDIRECTED, "solid", "both", "1.8")
-        if has_flagged:
-            _leg_row("lf_s", "lf_t", "Flagged edge (for review)",
-                     COLOR_FLAGGED, "dashed", "forward", "2.4")
+    label = (
+        '<<TABLE BORDER="1" COLOR="#bbbbbb" CELLBORDER="0" CELLSPACING="1" '
+        'CELLPADDING="1" BGCOLOR="white">'
+       # '<TR><TD COLSPAN="2" ALIGN="CENTER"><B>Legend</B></TD></TR>'
+        + "".join(rows) +
+        '</TABLE>>'
+    )
+#    dot.node("_legend", label=label, shape="plaintext",
+ #            fontname="Helvetica", fontsize="10", margin="0")
 
-        for role in roles_present:
-            fill  = NODE_ROLE_COLORS.get(role, "#CCCCCC")
-            text  = ROLE_LABELS.get(role, role)
-            nid   = f"lr_{role}"
-            leg.node(nid,
-                     label    = f'<<TABLE BORDER="1" CELLBORDER="0" '
-                                f'BGCOLOR="{fill}" STYLE="ROUNDED">'
-                                f'<TR><TD ALIGN="LEFT">&nbsp;{text}&nbsp;'
-                                f'</TD></TR></TABLE>>',
-                     style    = "invis")
-            if prev:
-                leg.edge(prev, nid, style="invis", weight="10")
-            prev = nid
+    dot.node("_legend", label=label, shape="plaintext",
+             fontname="Helvetica", fontsize="8", margin="0")
+
+    # Park the legend in the same rank (column, under rankdir=LR) as the
+    # graph's source nodes, so it stacks with them instead of stretching
+    # across the drawing.  It lands above them; forcing it below with a flat
+    # invisible edge does work, but it also reorders the real source nodes
+    # (Age gets dragged out of the column and the DAG distorts), so the
+    # position is left to Graphviz.
+    if rank_with:
+        with dot.subgraph() as s:
+            s.attr(rank="same")
+            for v in rank_with:
+                s.node(v)
+            s.node("_legend")
 
 
 # =============================================================================
 # RENDER / SAVE HELPERS
 # =============================================================================
 
-def _render_final(fig, save_path: str, dpi: int = 200) -> None:
-    """Save a matplotlib figure (Graphviz+legend composite) as PDF and PNG."""
+def _render_final(fig, save_path: str, dpi: int = 300) -> None:
+    """Save a matplotlib figure (Graphviz+legend composite) as PDF and PNG.  dpi: int = 200"""
     base, _ = os.path.splitext(save_path)
     os.makedirs(os.path.dirname(base) or ".", exist_ok=True)
-    fig.savefig(base + ".pdf", bbox_inches="tight", facecolor="white")
-    fig.savefig(base + ".png", dpi=dpi, bbox_inches="tight", facecolor="white")
+    fig.savefig(base + ".pdf", facecolor="white")      #removed bbox_inches="tight"
+    fig.savefig(base + ".png", dpi=dpi, facecolor="white") #removed bbox_inches="tight"
     print(f"  saved: {base}.pdf")
     print(f"  saved: {base}.png")
 
@@ -435,7 +643,7 @@ def _render_dot(dot: "gv.Digraph", save_path: str) -> None:
 
     png_path = base + ".png"
     dot_png  = dot.copy()
-    dot_png.attr(dpi="200")
+    dot_png.attr(dpi="300")         #dot_png.attr(dpi="200")
     dot_png.render(outfile=png_path, format="png", cleanup=True)
     print(f"  saved: {png_path}")
 
@@ -455,8 +663,8 @@ def save_figure_dual_format(fig, save_path: str, dpi: int = 300) -> None:
     """
     base, _ = os.path.splitext(save_path)
     os.makedirs(os.path.dirname(base) or ".", exist_ok=True)
-    fig.savefig(base + ".png", dpi=dpi,  bbox_inches="tight")
-    fig.savefig(base + ".pdf",           bbox_inches="tight")
+    fig.savefig(base + ".png", dpi=dpi)   #removed bbox_inches="tight"
+    fig.savefig(base + ".pdf")       #removed bbox_inches="tight"
     print(f"  saved: {base}.png")
     print(f"  saved: {base}.pdf")
 
@@ -498,31 +706,37 @@ def plot_discovery_result(
     node_roles: Optional[dict] = None,
     show_coefficients: bool = True,
     coef_threshold: float = 0.05,
+    coef_decimals: int = 4,      # match the precision used in the paper's tables
     layout: str = "fixed",       # accepted for API compat, ignored
     pos: Optional[dict] = None,  # accepted for API compat, ignored
     save_path: Optional[str] = None,
-    figsize: Tuple[int, int] = (16, 9),
+    figsize: Tuple[int, int] = (16, 12),     #figsize: Tuple[int, int] = (16, 9),
     show_legend: bool = True,
 ):
     """
     Render one DiscoveryResult as a publication-quality causal DAG.
 
-    Strategy
-    --------
-    1. Graphviz dot renders the graph to a temp PNG.
+    Strategy — Graphviz only, no matplotlib
+    ---------------------------------------
+    dot draws the graph, its title, and its legend in one pass, and
+    ``_render_dot`` writes it straight to PDF and PNG:
        - rankdir=LR  : outcomes on the right, protected attrs on the left.
        - Dataset-aware rank groups spread intermediate nodes evenly.
        - Edge labels (β coefficients) placed ON the edge automatically.
-       - size/ratio=fill uses the full canvas so space on the right is used.
+       - Title is the graph's own label, so it scales with the drawing.
+       - Legend is a cluster subgraph pinned below the graph.
 
-    2. matplotlib loads the PNG and composes the final figure:
-       - Graph image occupies the top ~85% of the figure.
-       - Legend occupies the bottom ~12%, clearly separated from the graph.
-       - Title is set as a matplotlib suptitle (not baked into the PNG).
+    The earlier version composed this PNG into a matplotlib figure to add a
+    suptitle and a legend strip.  That cost the PDF its vector text (the whole
+    drawing arrived as a raster image), and it printed the title twice — once
+    baked in by Graphviz, once drawn by matplotlib on top.  Everything
+    matplotlib was doing here, dot already does natively.
 
-    This hybrid approach gives Graphviz-quality edge-label placement AND
-    a clean, well-positioned legend that cannot drift into the graph area.
+    Returns the ``graphviz.Digraph`` (no caller uses the old Figure return).
+    ``figsize`` is accepted for API compatibility and ignored: the drawing's
+    natural size is set by LAYOUT_PRESETS, then scaled by \\includegraphics.
     """
+
     _check_graphviz()
 
     flagged = set(flagged_edges or [])
@@ -538,83 +752,123 @@ def plot_discovery_result(
         roles=roles,
         show_coefficients=show_coefficients,
         coef_threshold=coef_threshold,
-        ranksep="3.5",  # ← new; widens the individual DAGs
-        canvas_size="16,9",  # ← new; matches figsize aspect
+        coef_decimals=coef_decimals,
+        show_title=True,
     )
 
-    # ── Render Graphviz → temp PNG ────────────────────────────────────────────
-    tmpdir  = tempfile.mkdtemp(prefix="causal_plot_")
-    try:
-        tmp_png = os.path.join(tmpdir, "graph.png")
-        dot.attr(dpi="200")
-        dot.render(outfile=tmp_png, format="png", cleanup=True)
+    if show_legend:
+        roles_present = sorted({roles.get(v, "covariate")
+                                for v in result.variables})
+        _add_legend_cluster(
+            dot,
+            roles_present  = roles_present,
+            has_bidirected = bool(result.bidirected_edges),
+            has_flagged    = bool(flagged & set(result.directed_edges)),
+            has_undirected = bool(result.undirected_edges),
+            rank_with      = [v for v in result.variables if v in _SOURCE_NODES],
+        )
 
-        # ── Compose in matplotlib ─────────────────────────────────────────────
-        legend_frac = 0.12 if show_legend else 0.0
-        title_frac = 0.10  # reserve top 10% for the title
-        fig = plt.figure(figsize=figsize, facecolor="white")
+    if save_path:
+        _render_dot(dot, save_path)
 
-        # Graph image — fills everything above the legend strip
-        ax_g = fig.add_axes([0.0, legend_frac, 1.0, 1.0 - legend_frac - title_frac])
-        if os.path.exists(tmp_png):
-            ax_g.imshow(plt.imread(tmp_png), interpolation="lanczos")
-        ax_g.axis("off")
+    return dot
 
-        # Title — set as a matplotlib suptitle so it appears above the image
-        fig.suptitle(heading, fontsize=13, fontweight="bold", y=0.96)
 
-        # Legend — horizontal strip at the bottom of the figure
-        if show_legend:
-            roles_present = sorted({roles.get(v, "covariate")
-                                     for v in result.variables})
-            has_fl  = bool(flagged & {(s, d) for s, d in result.directed_edges})
-            has_bi  = bool(result.bidirected_edges)
-            has_und = bool(result.undirected_edges)
+def plot_edge_list(
+    edges: Iterable[tuple],
+    title: Optional[str] = None,
+    variables: Optional[list] = None,
+    node_roles: Optional[dict] = None,
+    flagged_edges: Optional[Iterable[Tuple[str, str]]] = None,
+    proxy_edges: Optional[Iterable[Tuple[str, str]]] = None,
+    show_coefficients: bool = True,
+    save_path: Optional[str] = None,
+    show_legend: bool = True,
+    preset: str = DEFAULT_PRESET,
+    flagged_label: str = "Flagged (for review)",
+):
+    """
+    Render a KNOWN graph — one specified by hand rather than discovered.
 
-            edge_handles = [
-                Line2D([0],[0], color=COLOR_DIRECTED,   lw=1.6,
-                       marker=">", markersize=8, label="Directed (i → j)"),
-            ]
-            if has_und:
-                edge_handles.append(
-                    Line2D([0],[0], color=COLOR_UNDIRECTED, lw=1.0,
-                           linestyle=":", label="Undirected (i — j)"))
-            if has_bi:
-                edge_handles.append(
-                    Line2D([0],[0], color=COLOR_BIDIRECTED, lw=1.8,
-                           marker=">", markersize=8,
-                           label="Bidirected (latent confounder)"))
-            if has_fl:
-                edge_handles.append(
-                    Line2D([0],[0], color=COLOR_FLAGGED, lw=2.2,
-                           linestyle="--", marker=">", markersize=8,
-                           label="Flagged edge (for review)"))
-            node_handles = [
-                mpatches.Patch(facecolor=NODE_ROLE_COLORS[r], edgecolor="black",
-                               label=ROLE_LABELS[r])
-                for r in roles_present
-            ]
-            all_handles = edge_handles + node_handles
+    ``plot_discovery_result`` takes a ``DiscoveryResult``, which only an
+    algorithm produces.  A ground-truth SCM is just an edge list, so this
+    wraps that list in a ``DiscoveryResult`` and hands it to the same
+    ``_build_dot`` the discovered graphs go through.  Node shapes, fills,
+    legend, and the PDF+PNG output are therefore identical by construction:
+    there is one renderer, not two.
 
-            # Dedicated axes for the legend strip
-            ax_l = fig.add_axes([0.0, 0.0, 1.0, legend_frac])
-            ax_l.axis("off")
-            ax_l.legend(
-                handles=all_handles,
-                loc="center",
-                ncol=min(len(all_handles), 6),
-                frameon=True, fancybox=True, framealpha=0.95,
-                edgecolor="#cccccc", fontsize=9,
-                borderaxespad=0.3,
-            )
+    Parameters
+    ----------
+    edges : iterable of ``(src, dst)`` or ``(src, dst, label)``
+        Directed edges.  The optional third element is the edge label, taken
+        verbatim — pass the SCM's own coefficient strings.
+    variables : list, optional
+        Node order.  Defaults to order of first appearance in ``edges``.
+    node_roles : dict, optional
+        ``{node: role}``; unlisted nodes fall back to "covariate".  Use the
+        "latent" role for unobserved nodes — it draws a dashed diamond, and
+        edges leaving it are drawn thin/dashed to match.
+    flagged_edges : iterable, optional
+        Drawn red dashed, exactly as in the discovery figures.
+    proxy_edges : iterable, optional
+        Drawn in the proxy colour with a heavier stroke.
 
-        if save_path:
-            _render_final(fig, save_path)
+    Returns the ``graphviz.Digraph``.
+    """
+    _check_graphviz()
 
-        return fig
+    edges = [tuple(e) for e in edges]
+    pairs  = [(e[0], e[1]) for e in edges]
+    labels = {(e[0], e[1]): e[2] for e in edges if len(e) > 2}
 
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    if variables is None:
+        variables = []
+        for src, dst in pairs:
+            for v in (src, dst):
+                if v not in variables:
+                    variables.append(v)
+
+    flagged = set(flagged_edges or ())
+    proxy   = set(proxy_edges or ())
+    roles   = node_roles or {v: "covariate" for v in variables}
+
+    result = DiscoveryResult(
+        algorithm      = title or "ground truth",
+        variables      = list(variables),
+        directed_edges = pairs,
+    )
+
+    dot = _build_dot(
+        result            = result,
+        title             = title or "",
+        flagged           = flagged,
+        roles             = roles,
+        show_coefficients = show_coefficients,
+        coef_threshold    = 0.0,
+        preset            = preset,
+        show_title        = bool(title),
+        proxy             = proxy,
+        edge_labels       = labels,
+    )
+
+    if show_legend:
+        roles_present = sorted({roles.get(v, "covariate") for v in variables})
+        _add_legend_cluster(
+            dot,
+            roles_present   = roles_present,
+            has_bidirected  = False,
+            has_flagged     = bool(flagged & set(pairs)),
+            has_undirected  = False,
+            has_proxy       = bool(proxy & set(pairs)),
+            has_latent_edge = any(roles.get(s) == "latent" for s, _ in pairs),
+            flagged_label   = flagged_label,
+            rank_with       = [v for v in variables if v in _SOURCE_NODES],
+        )
+
+    if save_path:
+        _render_dot(dot, save_path)
+
+    return dot
 
 
 def plot_grid(
@@ -625,8 +879,9 @@ def plot_grid(
     save_path: Optional[str] = None,
     layout: str = "fixed",
     pos: Optional[dict] = None,
-    figsize_per_panel: Tuple[float, float] = (7.5, 5.0),
+    figsize_per_panel: Tuple[float, float] = (8.0, 8.0),   #    figsize_per_panel: Tuple[float, float] = (7.5, 5.0),
     panel_titles: Optional[dict] = None,     # ← new
+    coef_decimals: int = 4,                  # match the paper's table precision
 ):
     """
     Render all algorithm results in a 3-column grid.
@@ -634,6 +889,15 @@ def plot_grid(
     Each panel is rendered by Graphviz independently (so labels are always
     on their edges), then the PNG outputs are tiled into a single matplotlib
     figure for the overview grid.
+
+    Panel height
+    ------------
+    Only ``figsize_per_panel[0]`` (the panel *width*) is honored directly.
+    Each grid row is as tall as the aspect ratio Graphviz actually produced.
+    These DAGs lay out ``rankdir=LR`` — wide and short — so a fixed square
+    panel box parked every drawing in the middle of a box roughly three times
+    too tall, which is what made the grid look vertically stretched.
+    ``figsize_per_panel[1]`` is used only as an upper bound on row height.
 
     Saves <save_path>.pdf (composed grid) and <save_path>.png.
     """
@@ -660,34 +924,46 @@ def plot_grid(
                 roles             = roles,
                 show_coefficients = True,
                 coef_threshold    = 0.05,
-                node_font_size    = 13,    # was 11
-                edge_font_size    = 11,    # was 8
-                node_width        = "1.15", # was 0.95
+                coef_decimals     = coef_decimals,
+                # `panel_titles` is drawn by matplotlib as each panel's axes
+                # title.  Baking it into the PNG too printed it twice.
+                show_title        = False,
+                node_font_size    = 12,    # was 13
+                edge_font_size    = 9,    # was 8
+                node_width        = "1.5", # was 1.15
             )
             # No per-panel legend — a shared legend sits below the grid
             out_png = os.path.join(tmpdir, f"{alg_name}.png")
             _render_dot_to_png_only(dot, out_png)
             panel_pngs.append((alg_name, out_png))
 
-        # ── Compose panels into matplotlib figure ─────────────────────────────
-        cols  = 3
-        rows  = (n + cols - 1) // cols
-        fig, axes = plt.subplots(
-            rows, cols,
-            figsize=(figsize_per_panel[0] * cols, figsize_per_panel[1] * rows),
-        )
-        axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
+        # ── Measure the panels ────────────────────────────────────────────────
+        cols = 3
+        rows = (n + cols - 1) // cols
 
-        for ax, (alg_name, png_path) in zip(axes, panel_pngs):
-            if os.path.exists(png_path):
-                img = plt.imread(png_path)
-                ax.imshow(img, interpolation="lanczos")
-            panel_label = (panel_titles or {}).get(alg_name, alg_name)
-            ax.set_title(panel_label, fontsize=12, fontweight="bold", pad=6)
-            ax.axis("off")
+        images = [plt.imread(p) if os.path.exists(p) else None
+                  for _, p in panel_pngs]
+        labels = [(panel_titles or {}).get(alg, alg) for alg, _ in panel_pngs]
 
-        for ax in axes[n:]:
-            ax.set_axis_off()
+        # height / width of each rendered drawing (fallback: a wide-ish DAG)
+        aspects = [(im.shape[0] / im.shape[1]) if im is not None else 0.5
+                   for im in images]
+
+        panel_w   = figsize_per_panel[0]
+        max_row_h = figsize_per_panel[1]          # hard cap, not a target
+
+        def _row(seq, r):
+            return seq[r * cols:(r + 1) * cols]
+
+        # A row is exactly as tall as its tallest drawing.
+        row_h = [min(panel_w * max(_row(aspects, r)), max_row_h)
+                 for r in range(rows)]
+
+        # Panel titles are drawn outside the axes, so their space lives in the
+        # inter-row gap (and in the top margin for the first row).
+        TITLE_LINE  = 0.22                        # in, per line at 12 pt
+        row_title_h = [TITLE_LINE * max(l.count("\n") + 1 for l in _row(labels, r)) + 0.08
+                       for r in range(rows)]
 
         # ── Shared legend ─────────────────────────────────────────────────────
         roles_present = sorted({roles.get(v, "covariate")
@@ -696,7 +972,7 @@ def plot_grid(
         edge_handles = [
             Line2D([0],[0], color=COLOR_DIRECTED,   lw=1.6,
                    marker=">", markersize=8, label="Directed (i → j)"),
-            Line2D([0],[0], color=COLOR_UNDIRECTED, lw=1.0, linestyle=":",
+            Line2D([0],[0], color=COLOR_UNDIRECTED, lw=1.5, linestyle="solid",
                    label="Undirected (i — j)"),
             Line2D([0],[0], color=COLOR_BIDIRECTED, lw=1.8,
                    marker=">", markersize=8, label="Bidirected (latent confounder)"),
@@ -710,19 +986,55 @@ def plot_grid(
         ]
         all_handles = edge_handles + node_handles
 
-        fig.suptitle(title, fontsize=14, fontweight="bold")
-        fig.subplots_adjust(
-            top=0.93, bottom=0.10,
-            left=0.01, right=0.99,
-            hspace=0.12, wspace=0.03,
+        # ── Compose panels into a matplotlib figure ───────────────────────────
+        # Every band below is sized in inches and only then converted to the
+        # figure fractions subplots_adjust/legend want.  Sizing in fractions
+        # (top=0.90, bottom=0.05, ...) is what produced the huge empty bands:
+        # a fraction of a very tall figure is a very tall margin.
+        SUPTITLE_H  = 0.55                                    # in
+        legend_ncol = min(len(all_handles), 2)
+        legend_rows = math.ceil(len(all_handles) / legend_ncol)
+        legend_h    = 0.20 * legend_rows + 0.30               # in
+
+        row_gap  = max(row_title_h[1:]) if rows > 1 else 0.0
+        top_band = SUPTITLE_H + row_title_h[0]
+        fig_w    = panel_w * cols
+        fig_h    = top_band + sum(row_h) + row_gap * (rows - 1) + legend_h
+
+        fig = plt.figure(figsize=(fig_w, fig_h), facecolor="white")
+        gs  = fig.add_gridspec(
+            rows, cols,
+            height_ratios = row_h,
+            top    = 1.0 - top_band / fig_h,
+            bottom = legend_h / fig_h,
+            left   = 0.01,
+            right  = 0.99,
+            # hspace is a fraction of the *average* axes height.
+            hspace = (row_gap / (sum(row_h) / rows)) if rows > 1 else 0.0,
+            wspace = 0.03,
         )
+
+        axes = [fig.add_subplot(gs[i // cols, i % cols])
+                for i in range(rows * cols)]
+
+        for ax, img, panel_label in zip(axes, images, labels):
+            if img is not None:
+                ax.imshow(img, interpolation="lanczos")
+            ax.set_title(panel_label, fontsize=12, fontweight="bold", pad=4)
+            ax.axis("off")
+
+        for ax in axes[n:]:
+            ax.set_axis_off()
+
+        fig.suptitle(title, fontsize=14, fontweight="bold",
+                     y=1.0 - (SUPTITLE_H / 2) / fig_h, va="center")
         fig.legend(
             handles=all_handles,
             loc="lower center",
-            ncol=min(len(all_handles), 5),
+            ncol=legend_ncol,
             frameon=True, fancybox=True, framealpha=0.95,
             edgecolor="#cccccc", fontsize=9,
-            bbox_to_anchor=(0.5, 0.01),
+            bbox_to_anchor=(0.5, 0.10 / fig_h),
         )
 
         if save_path:

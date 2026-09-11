@@ -90,11 +90,9 @@ def staged_backdoor_ate(
     outcome: str,
     adjustment_stages: List[Tuple[str, Sequence[str]]],
 ) -> pd.DataFrame:
-    """Compute ATE for a sequence of progressively larger adjustment sets.
-
-    This reproduces the COMPAS table where the ATE shrinks as more controls
-    are added (raw -> partial -> full). Each row of the returned DataFrame
-    corresponds to one stage.
+    """Compute ATE for a sequence of progressively larger adjustment sets,
+    where the ATE shrinks as more controls are added (raw -> partial -> full).
+    Each row of the returned DataFrame corresponds to one stage.
 
     Parameters
     ----------

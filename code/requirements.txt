@@ -8,6 +8,11 @@ causal-learn>=0.1.4.0
 statsmodels>=0.14
 pydot>=2.0
 
+# Standalone LiNGAM package. NOT provided by causal-learn: bootstrap_ci.py
+# imports DirectLiNGAM and ICALiNGAM from `lingam` directly, so omitting this
+# breaks `python bootstrap_ci.py` with an ImportError. Tested with 1.12.2.
+lingam>=1.12
+
 # --- Scientific stack ---------------------------------------------------------
 # Lower bounds match what the paper / causal-learn use; upper bound on numpy
 # protects against breakage if a future major bump arrives. Adjust freely.
@@ -18,10 +23,14 @@ scikit-learn>=1.2
 
 # --- Plotting & utilities -----------------------------------------------------
 matplotlib>=3.6
-seaborn>=0.12
 networkx>=2.8
 tqdm>=4.65
 
-# --- Optional -----------------------------------------------------------------
-# Uncomment if you want the DoWhy-based ATE path mentioned in the README:
-# dowhy>=0.11
+# Python wrapper for Graphviz, used by visualization.py for every DAG figure.
+# This package alone is NOT sufficient: visualization.py also checks for the
+# `dot` executable (shutil.which("dot")) and raises with install instructions
+# if the Graphviz system binaries are missing. Install those separately:
+#     Windows : https://graphviz.org/download/  (tick "Add to PATH")
+#     macOS   : brew install graphviz
+#     Linux   : sudo apt install graphviz
+graphviz>=0.20
