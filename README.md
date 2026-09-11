@@ -41,13 +41,13 @@ external data is needed for Study 1.
 | File | Purpose |
 |---|---|
 | `synthetic_data.py` | Study 1 data-generating process: ground-truth SCM, paired biased/unbiased dataset generation (planted Race→Loan, β = −0.15), ground-truth DAG figure (Fig. 1) |
-| `main_synthetic.py` | Study 1: runs all six algorithms on the paired datasets, computes SHD/detection and the backdoor ATE ladder (Table II, Figs. 1 and 3) |
-| `main_sensitivity.py` | Study 1 sensitivity grid: β ∈ {0.00–0.25} × n ∈ {1k, 5k, 10k, 50k} × 20 seeds = 480 runs (Fig. 2) |
-| `main_compas.py` | Study 2 pipeline: loads/filters COMPAS (n = 5,278), baseline disparity metrics, per-variable R² table, all six discovery algorithms, staged direct-effect estimation, DAG figures (Figs. 4–5, Tables III–IV) |
+| `main_synthetic.py` | Study 1: runs all six algorithms on the paired datasets, computes SHD/detection and the backdoor ATE ladder |
+| `main_sensitivity.py` | Study 1 sensitivity grid: β ∈ {0.00–0.25} × n ∈ {1k, 5k, 10k, 50k} × 20 seeds = 480 runs |
+| `main_compas.py` | Study 2 pipeline: loads/filters COMPAS (n = 5,278), baseline disparity metrics, per-variable R² table, all six discovery algorithms, staged direct-effect estimation, DAG figures |
 | `compas_analysis.py` | COMPAS loading, ProPublica preprocessing filters, disparity metrics |
 | `causal_discovery.py` | Wrappers for PC, FCI, GES, GRaSP, ICA-LiNGAM, DirectLiNGAM (incl. edge-convention auto-detection, DirectLiNGAM prior-knowledge constraints, and seed pinning for the stochastic algorithms) |
 | `ate_estimation.py` | Staged covariate-adjustment estimators (total effect → adjusted direct effect) |
-| `bootstrap_ci.py` | 1,000-resample nonparametric bootstrap 95% CIs for the adjusted DE and both LiNGAM β̂ estimates (Fig. 6, Step 5) |
+| `bootstrap_ci.py` | 1,000-resample nonparametric bootstrap 95% CIs for the adjusted DE and both LiNGAM β̂ estimates (Pipeline Step 5 Validation) |
 | `evalue_check.py` | E-value computation (VanderWeele & Ding continuous-outcome approximation): E ≈ 1.65 point estimate, ≈ 1.52 at the lower CI bound |
 | `run_dirlingam_compas.py` | Robustness run: DirectLiNGAM on COMPAS **without** background knowledge (β̂ = +0.4834; Section VI-B) |
 | `compas_grasp_bic.py` | Quantifies the BIC preference for GRaSP's temporally impossible COMPAS structure over the corrected orientation (Section VII) |
@@ -57,26 +57,26 @@ Outputs are written to `results/` (CSV tables, including `compas_r2.csv`,
 `compas_summary.csv`, `compas_ate.csv`, `compas_bootstrap_ci.csv`) and
 `figures/` (per-algorithm DAGs and grids as PDF).
 
-## Reproducing the paper's results
+## Paper's results
 
 ```bash
-# Study 1: synthetic benchmark (Table II, Figs. 1, 3)
+# Study 1: synthetic benchmark 
 python main_synthetic.py            # Generates the synthetic datasets
 
-# Study 1: sensitivity grid, 480 runs (Fig. 2) - longest step
+# Study 1: sensitivity grid, 480 runs - longest step
 python main_sensitivity.py          # Runs the sensitivity analysis on the synthetic datasets
 
-# Study 2: COMPAS pipeline (Tables III-IV, Figs. 4-5)
+# Study 2: COMPAS pipeline
 python main_compas.py
 
-# Validation: bootstrap CIs (~3-5 min) and E-value (Fig. 6, Steps 4-5)
+# Validation: bootstrap CIs (~3-5 min) and E-value (Pipeline Validation)
 python bootstrap_ci.py
 python evalue_check.py
 
-# Robustness: unconstrained DirectLiNGAM (Section VI-B)
+# Robustness: unconstrained DirectLiNGAM 
 python run_dirlingam_compas.py
 
-# Diagnostic: BIC comparison behind the GRaSP failure mode (Section VII)
+# Diagnostic: BIC comparison behind the GRaSP failure mode
 python compas_grasp_bic.py
 ```
 
@@ -95,13 +95,13 @@ Three different randomness conventions are in play, and all three are pinned:
   outside NumPy's global seeding; `random_state` is set explicitly wherever
   ICA-LiNGAM is fitted, including inside the bootstrap loop.
 
-With these seeds, the COMPAS results (Tables III–IV, Figs. 4–6), the
-adjusted-direct-effect ladder, the bootstrap confidence intervals, and the
-E-values reproduce exactly from the commands above, as does Table II — whose
+With these seeds, the COMPAS results, the  adjusted-direct-effect ladder, the 
+bootstrap confidence intervals, and the
+E-values reproduce exactly from the commands above — whose
 GRaSP row reports the pinned-initialization run, consistent with the table
 footnote in the paper. Because GRaSP's search is randomly initialized, any
-single-run result is one draw from the distribution characterized in Fig. 2;
-the 60% detection rate reported for (β = 0.15, n = 5,000) in Section V
+single-run result is one draw from the distribution;
+the 60% detection rate reported for (β = 0.15, n = 5,000)
 summarizes that distribution rather than describing any one run.
 
 ## Notes on methodology choices encoded here
