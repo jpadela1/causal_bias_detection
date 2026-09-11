@@ -18,9 +18,15 @@ bootstrap confidence intervals, and E-value sensitivity analysis.
 pip install -r requirements.txt
 ```
 
-Key packages: `causal-learn` (PC, FCI, GES, GRaSP, DirectLiNGAM with prior
-knowledge), `lingam` (bootstrap estimators), `dowhy`, `statsmodels`,
-`scikit-learn`, `pandas`, `numpy`, `matplotlib`.
+Key packages: `causal-learn` (PC, FCI, GES, GRaSP, ICA-LiNGAM, DirectLiNGAM
+with prior knowledge), `lingam` (the standalone LiNGAM package, used for the
+bootstrap β̂ estimates in `bootstrap_ci.py`), `statsmodels`, `scikit-learn`,
+`pandas`, `numpy`, `matplotlib`, `graphviz` (DAG rendering in
+`visualization.py`; the Graphviz system binaries must also be on `PATH`).
+
+Effect estimation is implemented directly in `ate_estimation.py` on top of
+`numpy`/`pandas` and `statsmodels`; no external causal-inference framework
+(e.g. DoWhy) is required.
 
 ## Data
 
@@ -95,7 +101,7 @@ E-values reproduce exactly from the commands above, as does Table II — whose
 GRaSP row reports the pinned-initialization run, consistent with the table
 footnote in the paper. Because GRaSP's search is randomly initialized, any
 single-run result is one draw from the distribution characterized in Fig. 2;
-the 70% detection rate (14/20) reported for (β = 0.15, n = 5,000) in Section V
+the 60% detection rate reported for (β = 0.15, n = 5,000) in Section V
 summarizes that distribution rather than describing any one run.
 
 ## Notes on methodology choices encoded here
