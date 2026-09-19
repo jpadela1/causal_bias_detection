@@ -91,8 +91,8 @@ NODE_ROLE_COLORS = {
 
 # Shape is a REDUNDANT encoding of role, so the figure still reads when the
 # journal prints it in greyscale.  The five fills above have nearly identical
-# luminance (#CCCCCC and #A6DBA0 both land near L*=80), so colour alone does
-# not survive a black-and-white printer or a colour-blind reader.
+# luminance (#CCCCCC and #A6DBA0 both land near L*=80), so color alone does
+# not survive a black-and-white printer or a color-blind reader.
 NODE_ROLE_SHAPES = {
     "protected": "octagon",
     "proxy":     "hexagon",
@@ -131,13 +131,7 @@ ROLE_LABELS = {
 # The renderer deliberately does NOT set Graphviz's `size` or `ratio`
 # attributes.  `size` is a *maximum*: whenever the natural layout is larger,
 # Graphviz writes a uniform scale factor into the output, shrinking every
-# font and stroke.  That is what made earlier versions unreadable — raising
-# `node_width`/`fontsize` grew the natural layout, which lowered the scale
-# factor, which cancelled the change out exactly.
-#
-# Instead: pick the preset whose *natural* width matches the width the figure
-# will occupy on paper, then \includegraphics it at 1:1 (or near it).  Then a
-# 12 pt font in this file is a 12 pt font on the printed page.
+# font and stroke.
 #
 # Natural width  ~=  n_ranks*node_width + (n_ranks-1)*ranksep + edge-label space
 # Both studies lay out in 5 rank columns.
@@ -187,8 +181,6 @@ def _plain_title(text: str) -> str:
     out = text
     for tex, uni in _MATHTEXT_REPLACEMENTS:
         out = out.replace(tex, uni)
-    # Drop any remaining TeX scaffolding, then re-introduce line breaks using
-    # Graphviz's own escape (order matters: strip backslashes first).
     out = out.replace("$", "").replace("\\", "")
     out = out.replace('"', "'")
     return out.replace("\n", "\\n")
@@ -218,7 +210,7 @@ DEFAULT_ROLES_COMPAS = {
 
 # Rank-pinned node sets for rankdir=LR layout.  SES is exogenous in the
 # ground-truth SCM and never appears in a discovery result (it is the
-# unobserved confounder), so pinning it left affects only the ground-truth DAG.
+# unobserved confounder), so pinning it affects only the ground-truth DAG.
 _SOURCE_NODES = {"Race", "Gender", "Sex", "SES"}
 _SINK_NODES   = {"Loan", "Score", "Recidivism"}
 
@@ -324,8 +316,6 @@ def _build_dot(
         bgcolor  = "white",
         fontname = "Helvetica-Bold",
         fontsize = str(cfg["node_font_size"] + 1),
-        # `size` and `ratio` deliberately omitted — see docstring.
-        # `forcelabels` deliberately omitted — it is what allows label overlap.
     )
     if show_title and title:
         graph_attr["label"]     = _plain_title(title)
@@ -524,6 +514,32 @@ def _build_dot(
 # LEGEND  (embedded as a Graphviz cluster)
 # =============================================================================
 
+def _legend_anchor(variables: Iterable[str], legend_loc: str) -> dict:
+    """
+    Translate a human-readable legend position into the rank hints
+    ``_add_legend_cluster`` needs.
+
+    Under ``rankdir=LR`` a "corner" is a (column, position-in-column) pair:
+    the rightmost column is the sink rank, the leftmost is the source rank,
+    and "top" is the first slot in whichever column is chosen.
+
+    ``legend_loc``:
+        "top-right"  — sink column, pinned to the top   (default for singles)
+        "top-left"   — source column, pinned to the top
+        "auto"       — source column, position left to Graphviz (old behaviour)
+    """
+    variables = list(variables)
+    if legend_loc in ("top-right", "right"):
+        anchors, fallback = [v for v in variables if v in _SINK_NODES], "max"
+    else:
+        anchors, fallback = [v for v in variables if v in _SOURCE_NODES], "min"
+    return dict(
+        rank_with     = anchors,
+        pin_top       = legend_loc != "auto",
+        fallback_rank = fallback,
+    )
+
+
 def _add_legend_cluster(
     dot: "gv.Digraph",
     roles_present: list[str],
@@ -534,6 +550,8 @@ def _add_legend_cluster(
     has_proxy: bool = False,
     has_latent_edge: bool = False,
     flagged_label: str = "Flagged (for review)",
+    pin_top: bool = False,
+    fallback_rank: Optional[str] = None,
 ) -> None:
     """
     Embed a legend in the graph as a single HTML-table node.
@@ -541,14 +559,13 @@ def _add_legend_cluster(
     Why one node
     ------------
     The obvious encoding — a dummy node pair per row, joined by a styled edge
-    that acts as the icon — cannot work under ``rankdir=LR``.  Each pair
-    consumes two ranks, so the legend spreads across the drawing horizontally
+    that acts as the icon. Each pair consumes two ranks, so the legend spreads across the drawing horizontally
     instead of stacking, and rank/cluster hints cannot pull it back: `rankdir`
     is a whole-graph attribute, and Graphviz gives no way to pin a cluster to
     the bottom edge.  One table node has exactly one rank to place, so the
     layout is predictable, and its rows stack the way a legend should.
 
-    Edge styles are shown with coloured Unicode glyphs rather than real
+    Edge styles are shown with colored Unicode glyphs rather than real
     arrows, which is the trade for that predictability.  Role swatches are
     real filled cells, matching the node fills exactly.
     """
@@ -559,7 +576,7 @@ def _add_legend_cluster(
             f'<TR>'
             f'<TD ALIGN="CENTER" WIDTH="18">'
             f'<FONT COLOR="{color}" POINT-SIZE="10"><B>{glyph}</B></FONT></TD>'
-            f'<TD ALIGN="LEFT">{text}</TD>'
+            f'<TD ALIGN="LEFT">{text}</TD>'             #   f'<TD ALIGN="LEFT">{text}</TD>'
             f'</TR>'
         )
 
@@ -587,7 +604,7 @@ def _add_legend_cluster(
         rows.append(
             f'<TR>'
             f'<TD BGCOLOR="{fill}" WIDTH="34" BORDER="1" COLOR="black"> </TD>'
-            f'<TD ALIGN="LEFT">{ROLE_LABELS.get(role, role)}</TD>'
+            f'<TD ALIGN="LEFT">{ROLE_LABELS.get(role, role)}</TD>'                  # f'<TD ALIGN="LEFT">{ROLE_LABELS.get(role, role)}</TD>'
             f'</TR>'
         )
 
@@ -604,17 +621,43 @@ def _add_legend_cluster(
     dot.node("_legend", label=label, shape="plaintext",
              fontname="Helvetica", fontsize="8", margin="0")
 
-    # Park the legend in the same rank (column, under rankdir=LR) as the
-    # graph's source nodes, so it stacks with them instead of stretching
-    # across the drawing.  It lands above them; forcing it below with a flat
-    # invisible edge does work, but it also reorders the real source nodes
-    # (Age gets dragged out of the column and the DAG distorts), so the
-    # position is left to Graphviz.
+    # Park the legend in the same rank (column, under rankdir=LR) as the nodes
+    # in `rank_with`, so it stacks with them instead of stretching across the
+    # drawing.  Pass the SINK nodes for a right-hand legend, the SOURCE nodes
+    # for a left-hand one.
+    #
+    # `pin_top` then fixes it at the TOP of that column.  Graphviz has no
+    # absolute placement, but a flat edge — one whose endpoints share a rank —
+    # does fix their order within it, tail first; under rankdir=LR "first"
+    # means uppermost.  An invisible flat edge to the column's first node is
+    # therefore the closest thing to "upper right corner" dot offers.
+    #
+    # Do NOT add constraint=false here.  It reads as intuitive (the edge is
+    # decorative, so keep it out of the layout) but it switches off the flat
+    # edge's ordering effect too, and the legend then sinks to the BOTTOM of
+    # the column — the opposite of what is being asked for.  The attribute is
+    # unnecessary anyway: both endpoints already sit in a rank=same subgraph,
+    # so rank assignment is settled before this edge is considered.
+    #
+    # Caveat: this makes the legend a real participant in crossing
+    # minimisation for that rank, so the other nodes in the column may
+    # reshuffle among themselves (the sink column usually holds one or two
+    # nodes, which is why pinning right distorts far less than pinning left —
+    # the source column is where an earlier attempt dragged Age out of place).
     if rank_with:
         with dot.subgraph() as s:
             s.attr(rank="same")
             for v in rank_with:
                 s.node(v)
+            s.node("_legend")
+        if pin_top:
+            dot.edge("_legend", rank_with[0], style="invis", weight="10")
+    elif fallback_rank:
+        # No anchor nodes present (e.g. a subgraph with no sink).  Pin the
+        # legend to the terminal rank on its own; its vertical position within
+        # that rank is then Graphviz's call.
+        with dot.subgraph() as s:
+            s.attr(rank=fallback_rank)
             s.node("_legend")
 
 
@@ -711,12 +754,13 @@ def plot_discovery_result(
     pos: Optional[dict] = None,  # accepted for API compat, ignored
     save_path: Optional[str] = None,
     figsize: Tuple[int, int] = (16, 12),     #figsize: Tuple[int, int] = (16, 9),
-    show_legend: bool = True,
+    show_legend: bool = True,                   # show_legend: bool = True
+    legend_loc: str = "top-right",   # "top-right" | "top-left" | "auto"
 ):
     """
     Render one DiscoveryResult as a publication-quality causal DAG.
 
-    Strategy — Graphviz only, no matplotlib
+    Strategy — Graphviz only, removed matplotlib
     ---------------------------------------
     dot draws the graph, its title, and its legend in one pass, and
     ``_render_dot`` writes it straight to PDF and PNG:
@@ -756,7 +800,7 @@ def plot_discovery_result(
         show_title=True,
     )
 
-    if show_legend:
+    if show_legend==True:
         roles_present = sorted({roles.get(v, "covariate")
                                 for v in result.variables})
         _add_legend_cluster(
@@ -765,7 +809,7 @@ def plot_discovery_result(
             has_bidirected = bool(result.bidirected_edges),
             has_flagged    = bool(flagged & set(result.directed_edges)),
             has_undirected = bool(result.undirected_edges),
-            rank_with      = [v for v in result.variables if v in _SOURCE_NODES],
+            **_legend_anchor(result.variables, legend_loc),
         )
 
     if save_path:
@@ -783,9 +827,10 @@ def plot_edge_list(
     proxy_edges: Optional[Iterable[Tuple[str, str]]] = None,
     show_coefficients: bool = True,
     save_path: Optional[str] = None,
-    show_legend: bool = True,
+    show_legend: bool = True,       #show_legend: bool = True,
     preset: str = DEFAULT_PRESET,
     flagged_label: str = "Flagged (for review)",
+    legend_loc: str = "top-right",   # "top-right" | "top-left" | "auto"
 ):
     """
     Render a KNOWN graph — one specified by hand rather than discovered.
@@ -851,7 +896,7 @@ def plot_edge_list(
         edge_labels       = labels,
     )
 
-    if show_legend:
+    if show_legend==True:
         roles_present = sorted({roles.get(v, "covariate") for v in variables})
         _add_legend_cluster(
             dot,
@@ -862,7 +907,7 @@ def plot_edge_list(
             has_proxy       = bool(proxy & set(pairs)),
             has_latent_edge = any(roles.get(s) == "latent" for s, _ in pairs),
             flagged_label   = flagged_label,
-            rank_with       = [v for v in variables if v in _SOURCE_NODES],
+            **_legend_anchor(variables, legend_loc),
         )
 
     if save_path:
