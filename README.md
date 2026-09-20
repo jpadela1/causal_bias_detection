@@ -4,6 +4,7 @@ Replication code for the paper *"When Correlation Isn't Enough: Using Causal
 Methods for Discriminatory Bias Detection"* (ICTAI 2026).
 
 Authors:  Joyce S. Padela, Pavan Raj Ravi, Jianwu Wang
+
 Department of Information Systems, 
 University of Maryland, Baltimore County, USA
 
