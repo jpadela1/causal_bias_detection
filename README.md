@@ -1,7 +1,11 @@
 # When Correlation Isn't Enough: Using Causal Inference for Algorithm Bias Detection
 
 Replication code for the paper *"When Correlation Isn't Enough: Using Causal
-Inference for Algorithm Bias Detection"* (under review, anonymized).
+Methods for Discriminatory Bias Detection"* (ICTAI 2026).
+
+Authors:  Joyce S. Padela, Pavan Raj Ravi, Jianwu Wang
+Department of Information Systems, 
+University of Maryland, Baltimore County, USA
 
 The repository reproduces both studies in the paper: (1) a synthetic
 loan-approval benchmark of six causal discovery algorithms against a planted
