@@ -116,7 +116,7 @@ def main():
 
     # Highlight the contrast between the two ways of computing "DIR"
     print("\n  --- Score disparity, two ways ---")
-    print(f"  Mean-ratio (paper's old metric, NOT 4/5-rule comparable): "
+    print(f"  Mean-ratio (metric, NOT 4/5-rule comparable): "
           f"{base['mean_score_ratio']}")
     print(f"  Selection-rate DIR P(Score>=5|AA)/P(Score>=5|Cau): "
           f"{base['DIR_score_selection_rate']}  "
