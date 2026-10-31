@@ -238,17 +238,17 @@ def baseline_disparities(df: pd.DataFrame) -> dict:
         # Recidivism rates (rate ratio is a legitimate DIR)
         "recid_rate_AA":      round(rec_AA,  4),
         "recid_rate_other":   round(rec_oth, 4),
-        "DIR_recidivism":     round(_safe_ratio(rec_AA, rec_oth), 3),
+        "DIR_recidivism":     round(_safe_ratio(rec_AA, rec_oth), 4),
 
         # Mean-ratio "DIR" -- DESCRIPTIVE ONLY, not 4/5-rule comparable.
-        "mean_score_ratio":   round(_safe_ratio(score_AA, score_oth), 3),
+        "mean_score_ratio":   round(_safe_ratio(score_AA, score_oth), 4),
         "stat_parity_score":  round(score_AA - score_oth, 3),
 
         # Selection-rate DIR -- this IS what 4/5 rule is defined for.
         "high_risk_rate_AA":     round(high_AA,  4),
         "high_risk_rate_other":  round(high_oth, 4),
         "DIR_score_selection_rate":
-            round(_safe_ratio(high_AA, high_oth), 3),
+            round(_safe_ratio(high_AA, high_oth), 4),
     }
 
 

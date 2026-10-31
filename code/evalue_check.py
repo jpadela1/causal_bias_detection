@@ -6,7 +6,7 @@ d -> RR via RR ~= exp(0.91 * d); E = RR + sqrt(RR*(RR-1)).
 import numpy as np
 
 SD_SCORE = 2.856          # SD of decile_score on the n=5,278 frame
-DE_POINT = 0.5255          # adjusted direct effect, decile points
+DE_POINT = 0.5255          # adjusted direct effect, decile points Compas_ate.csv ATE
 DE_CI_LO = 0.395           # lower 95% bootstrap CI bound
 
 def evalue_from_effect(effect_points: float, sd: float) -> tuple[float, float]:

@@ -7,3 +7,4 @@ print("Race->Score:", res.has_directed_edge("Race", "Score"),
       "beta:", res.get_coefficient("Race", "Score"))
 print("Edges into Race:", [(s,d) for (s,d) in res.directed_edges if d=="Race"])
 print(res.summary())
+

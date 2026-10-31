@@ -155,7 +155,7 @@ def main():
     print(r2_df.to_string(index=False))
     r2_df.to_csv("results/compas_r2.csv", index=False)
     # ---------------------------------------------------------------------
-    # 5. Causal discovery
+    # 5. Causal discovery - declare prior knowledge (exo) for DirectLiNGAM
     # ---------------------------------------------------------------------
     print("\n=== Running causal discovery on COMPAS ===")
     results = run_all(
