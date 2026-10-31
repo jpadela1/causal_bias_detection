@@ -121,7 +121,31 @@ def main():
     print(f"  Selection-rate DIR P(Score>=5|AA)/P(Score>=5|Cau): "
           f"{base['DIR_score_selection_rate']}  "
           f"(0.80 threshold applies to this one)")
+    #---------------------------------------------------------------
+    # Added 10/31/26 for additional precision for comparison
+    # ---------------------------------------------------------------------
+    # 3b. Slide 5 / Step 1 descriptives at 4 decimals (n = 5,278)
+    # ---------------------------------------------------------------------
+    print("\n=== Step 1 descriptives (AA vs Cau, 4 dp) ===")
+    g = df.groupby("Race")
+    step1 = pd.DataFrame({
+        "n":              g.size(),
+        "mean_decile":    g["Score"].mean(),
+        "high_risk_rate": g["Score"].apply(lambda s: (s >= 5).mean()),
+        "recid_rate":     g["Recidivism"].mean(),
+    }).rename(index={1: "African-American", 0: "Caucasian"})
 
+    aa, ca = step1.loc["African-American"], step1.loc["Caucasian"]
+    step1_ratios = pd.Series({
+        "mean_gap":         aa.mean_decile - ca.mean_decile,          # expect 1.6416
+        "DIR_selection":    aa.high_risk_rate / ca.high_risk_rate,    # expect 1.7406
+        "four_fifths_inv":  ca.high_risk_rate / aa.high_risk_rate,    # expect 0.5745
+        "recid_rate_ratio": aa.recid_rate / ca.recid_rate,            # expect 1.3384
+    })
+    print(step1.round(4).to_string())
+    print(step1_ratios.round(4).to_string())
+    step1.round(4).to_csv("results/compas_step1_descriptives.csv")
+    step1_ratios.round(4).to_csv("results/compas_step1_ratios.csv", header=["value"])
     # ---------------------------------------------------------------------
     # 4. ProPublica's contingency-table numbers on n=7,214 sample
     # ---------------------------------------------------------------------

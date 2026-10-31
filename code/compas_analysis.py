@@ -232,8 +232,8 @@ def baseline_disparities(df: pd.DataFrame) -> dict:
         "n_other":  int(len(majority)),
 
         # Descriptive group means
-        "mean_score_AA":      round(score_AA,  3),
-        "mean_score_other":   round(score_oth, 3),
+        "mean_score_AA":      round(score_AA,  4),  #was 3
+        "mean_score_other":   round(score_oth, 4),  #3
 
         # Recidivism rates (rate ratio is a legitimate DIR)
         "recid_rate_AA":      round(rec_AA,  4),
@@ -242,7 +242,7 @@ def baseline_disparities(df: pd.DataFrame) -> dict:
 
         # Mean-ratio "DIR" -- DESCRIPTIVE ONLY, not 4/5-rule comparable.
         "mean_score_ratio":   round(_safe_ratio(score_AA, score_oth), 4),
-        "stat_parity_score":  round(score_AA - score_oth, 3),
+        "stat_parity_score":  round(score_AA - score_oth, 4),       #3
 
         # Selection-rate DIR -- this IS what 4/5 rule is defined for.
         "high_risk_rate_AA":     round(high_AA,  4),
@@ -278,7 +278,7 @@ def per_race_breakdown(raw: pd.DataFrame) -> pd.DataFrame:
             "race":        race,
             "n":           n,
             "recidivated": recid,
-            "rate_pct":    round(rate * 100, 2),
+            "rate_pct":    round(rate * 100, 4),        #was 2
         })
     return pd.DataFrame(rows).sort_values("n", ascending=False).reset_index(drop=True)
 
@@ -311,10 +311,10 @@ def propublica_contingency(raw: pd.DataFrame, race: str) -> dict:
 
     return {
         "n":       len(sub),
-        "FP_rate": round(fp_rate * 100, 2),
-        "FN_rate": round(fn_rate * 100, 2),
-        "PPV":     round(ppv,     2),
-        "NPV":     round(npv,     2),
+        "FP_rate": round(fp_rate * 100, 4),  #precision was 2
+        "FN_rate": round(fn_rate * 100, 4),
+        "PPV":     round(ppv,     4),
+        "NPV":     round(npv,     4),
     }
 
 
